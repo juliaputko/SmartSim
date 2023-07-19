@@ -247,6 +247,13 @@ def _get_alloc_cmd(nodes, time, account, options=None):
                 else:
                     salloc_args += ["=".join((prefix + opt, str(val)))]
 
+        # else: #jp
+        #     raise ...maybe make a new error (
+        #         "{opt} ignored in options. Add as argument."
+        #     )
+
+        #     ## add under INternal Exception or an SSConfigError ... jp 
+
     return salloc_args
 
 

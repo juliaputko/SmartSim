@@ -24,6 +24,29 @@ def test_get_release_allocation_w_options():
     time.sleep(5)  # give slurm a rest
     slurm.release_allocation(alloc)
 
+#jp ---- 
+
+# def test_get_release_allocation_w_options():
+#     """test slurm interface for obtaining allocations """
+#     options = {"ntasks-per-node": 1}
+#     alloc = slurm.get_allocation(nodes=1, time="00:05:00", options=time)
+#     time.sleep(5)  # give slurm a rest
+#     slurm.release_allocation(alloc)
+
+# def test_get_release_allocation_w_options():
+#     """test slurm interface for obtaining allocations """
+#     options = {"ntasks-per-node": 1}
+#     alloc = slurm.get_allocation(nodes=1, time="00:05:00", options=nodes)
+#     time.sleep(5)  # give slurm a rest
+#     slurm.release_allocation(alloc)
+
+# def test_get_release_allocation_w_options():
+#     """test slurm interface for obtaining allocations """
+#     options = {"ntasks-per-node": 1}
+#     alloc = slurm.get_allocation(nodes=1, time="00:05:00", options=account)
+#     time.sleep(5)  # give slurm a rest
+#     slurm.release_allocation(alloc)
+
 
 # --------- Error handling ----------------------------
 
