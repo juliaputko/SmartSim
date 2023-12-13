@@ -134,14 +134,21 @@ class SlurmLauncher(WLMLauncher):
         if not self.task_manager.actively_monitoring:
             self.task_manager.start()
 
-        cmd_list = step.get_launch_cmd()
+        cmd_list = (
+            step.get_launch_cmd()
+        )  # JPNOTE want this and to print it out - instead of launching it
         step_id = None
         task_id = None
+
+        ## passes the cmd_list to start and wait
+        ##
 
         # Launch a batch step with Slurm
         if isinstance(step, SbatchStep):
             # wait for batch step to submit successfully
-            return_code, out, err = self.task_manager.start_and_wait(cmd_list, step.cwd)
+            return_code, out, err = self.task_manager.start_and_wait(
+                cmd_list, step.cwd
+            )  # jp note
             if return_code != 0:
                 raise LauncherError(f"Sbatch submission failed\n {out}\n {err}")
             if out:
@@ -150,6 +157,8 @@ class SlurmLauncher(WLMLauncher):
 
         # Launch a in-allocation or on-allocation (if srun) command
         elif isinstance(step, SrunStep):
+            print("CMDLIST", cmd_list)
+            print("STEPCWD", step.cwd)
             task_id = self.task_manager.start_task(cmd_list, step.cwd)
         else:
             # MPI/local steps don't direct output like slurm steps

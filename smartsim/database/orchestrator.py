@@ -258,6 +258,7 @@ class Orchestrator(EntityList[DBNode]):
                 launcher=self.launcher,
                 **kwargs,
             )
+            print("build batch settings", self.batch_settings)
             if hosts:
                 self.set_hosts(hosts)
             elif not hosts and self.run_command == "mpirun":
@@ -629,6 +630,8 @@ class Orchestrator(EntityList[DBNode]):
         if launcher is None:
             raise ValueError("Expected param `launcher` of type `str`")
 
+        # jpnote: batch settings preview
+
         # enter this conditional if user has not specified an allocation to run
         # on or if user specified batch=False (alloc will be found through env)
         if not alloc and batch:
@@ -650,6 +653,8 @@ class Orchestrator(EntityList[DBNode]):
     ) -> RunSettings:
         run_args = {} if run_args is None else run_args
         mpmd_nodes = single_cmd and db_nodes > 1
+
+        # jpnote run settings preview
 
         if mpmd_nodes:
             run_settings = create_run_settings(

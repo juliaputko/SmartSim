@@ -122,14 +122,193 @@ class Experiment:
             if not osp.isdir(osp.abspath(exp_path)):
                 raise NotADirectoryError("Experiment path provided does not exist")
             exp_path = osp.abspath(exp_path)
-        self.exp_path = init_default(osp.join(getcwd(), name), exp_path, str)
+        self.exp_path = init_default(osp.join(getcwd(), name), exp_path, str)  # jpnote
 
         if launcher == "auto":
             launcher = detect_launcher()
 
-        self._control = Controller(launcher=launcher)
+        self._control = Controller(
+            launcher=launcher
+        )  # jpnote -- creates launcher do I have to create another one? or is this fine?
         self._launcher = launcher.lower()
         self.db_identifiers: t.Set[str] = set()
+
+    # can now call exp.preview
+    def preview(self, *args: t.Any):
+        """Preview information prior to launch (not started yet)
+        method that aggregates multiple pieces of information
+        to give users insight into what and how entities will be launched
+
+        Any instance ``Model``, ``Ensemble`` or ``Orchestrator``
+        instance created by the Experiment can be passed as
+        an argument to the preview method."""
+        # try:
+
+        preview_manifest = Manifest(*args)
+        # SmartSimEntity? - can still get name, path and run settings from the manifest right?
+        self._launch_summary_preview(preview_manifest)  # old launch summary
+
+        # creating a job step off of the
+        ## Database
+
+        for dbs in preview_manifest.dbs:
+            print(type(dbs))
+            for orchestrator in dbs:
+                # batch = True
+                if orchestrator.batch:
+                    orc_batch_step = orchestrator.batch_settings.create_batch_job_step(
+                        orchestrator
+                    )
+                    # smartsim/_core/launcher/local/local.py
+
+                    cmd = orc_batch_step.get_launch_cmd()
+
+                # not running as a batch
+                else:
+                    db_steps = [
+                        (orchestrator.run_settings.create_job_step(db), db)
+                        for db in orchestrator.entities
+                    ]
+                    for db_step in db_steps:
+                        cmd = db_step.get_launch_cmd()
+
+        ## Ensembles
+        # create all steps prior to launch
+        steps: t.List[
+            t.Tuple[Step, t.Union[SmartSimEntity, EntitySequence[SmartSimEntity]]]
+        ] = []
+        all_entity_lists = manifest.ensembles
+        for elist in all_entity_lists:
+            # if batch = True
+            if elist.batch:
+                batch_step = elist.batch_settings.create_batch_job_step(elist)
+                steps.append((batch_step, elist))
+            # not running as a batch
+            else:
+                job_steps = [
+                    (elist.run_settings.create_job_step(e), e) for e in elist.entities
+                ]
+                steps.extend(job_steps)
+                cmd = job_step.get_launch_cmd()
+
+        ## Model
+        for model in manifest.models:
+            if model.batch_settings:
+                anon_entity_list = _AnonymousBatchJob(
+                    model.name, model.path, model.batch_settings
+                )
+                anon_entity_list.entities.append(model)
+                batch_step = model.batch_settings.create_batch_job_step(
+                    anon_entity_list
+                )
+                steps.append((batch_step, model))
+                cmd = batch_step.get_launch_cmd()
+            else:
+                job_step = model.run_settings.create_job_step(model)
+                steps.append((job_step, model))
+                cmd = job_step.get_launch_cmd()
+
+        # ...
+
+        # print out the step instead of launching it
+
+        # if isinstance(entity, Model):
+        # self._prep_entity_client_env(entity)
+        # step = self._launcher.create_step(entity.name, entity.path, entity.run_settings)
+        # print(step)
+
+        ##
+        # create all steps prior to launch # create the steps here
+        # steps: t.List[
+        #     t.Tuple[
+        #         Controller.Step,
+        #         t.Union[SmartSimEntity, Controller.EntitySequence[SmartSimEntity]],
+        #     ]
+        # ] = []
+
+    # entity: SmartSimEntity) , entity_list: t.Union[Orchestrator, Ensemble, _AnonymousBatchJob]
+    #        if isinstance(entity, Model):
+    #     self._prep_entity_client_env(entity)
+
+    # step = self._launcher.create_step(entity.name, entity.path, entity.run_settings)
+
+    # # matt toast addition
+    #  manifest_builder = LaunchedManifestBuilder[t.Tuple[str, Step]]()
+
+    # all_entity_lists = Manifest.ensembles
+    # for elist in all_entity_lists:
+    #     #
+    #     # entity.runsettings.create_step()
+    #     #
+    #     if elist.batch:
+    #         batch_step = Controller._create_batch_job_step(elist)
+    #         ##
+
+    #         # dont have to go throuhg controller
+    #         # eg. matt toast addition
+    #         # batch_step, substeps = self._create_batch_job_step(elist)
+    #         # manifest_builder.add_ensemble(
+    #         #     elist, [(batch_step.name, step) for step in substeps]
+    #         # )
+    #         steps.append((batch_step, elist))
+    #     else:
+    #         job_steps = [
+    #             (Controller._create_job_step(e), e) for e in elist.entities
+    #         ]  # < -- wouldnt have to keep track of them
+
+    #         # have the entity create its job steps bc creating job is on the entity's runsettings now
+
+    #         steps.extend(job_steps)
+    # # models themselves cannot be batch steps. If batch settings are
+    # # attached, wrap them in an anonymous batch job step
+    # for model in Manifest.models:
+    #     if model.batch_settings:
+    #         anon_entity_list = Controller._AnonymousBatchJob(
+    #             model.name, model.path, model.batch_settings
+    #         )
+    #         anon_entity_list.entities.append(model)
+    #         batch_step = Controller._create_batch_job_step(anon_entity_list)
+    #         steps.append((batch_step, model))
+    #     else:
+    #         job_step = Controller._create_job_step(model)
+    #         steps.append((job_step, model))
+
+    # just dont do this... --> acutally passing it to launch the step
+    # print/add to the launched manifest builder (for preview) instead
+    # # launch steps
+    # for step, entity in steps:
+    #     self._launch_step(step, entity)
+
+    ###
+    # create all steps prior to launch
+    # steps: t.List[
+    #     t.Tuple[Step, t.Union[SmartSimEntity, EntitySequence[SmartSimEntity]]]
+    # ] = []
+    # all_entity_lists = manifest.ensembles
+    # for elist in all_entity_lists:
+    #     if elist.batch:
+    #         batch_step = self._create_batch_job_step(elist)
+    #         steps.append((batch_step, elist))
+    #     else:
+    #         job_steps = [(self._create_job_step(e), e) for e in elist.entities]
+    #         steps.extend(job_steps)
+    # # models themselves cannot be batch steps. If batch settings are
+    # # attached, wrap them in an anonymous batch job step
+    # for model in manifest.models:
+    #     if model.batch_settings:
+    #         anon_entity_list = _AnonymousBatchJob(
+    #             model.name, model.path, model.batch_settings
+    #         )
+    #         anon_entity_list.entities.append(model)
+    #         batch_step = self._create_batch_job_step(anon_entity_list)
+    #         steps.append((batch_step, model))
+    #     else:
+    #         job_step = self._create_job_step(model)
+    #         steps.append((job_step, model))
+
+    ###
+
+    # print(step)
 
     def start(
         self,
@@ -188,7 +367,6 @@ class Experiment:
 
         :type kill_on_interrupt: bool, optional
         """
-
         start_manifest = Manifest(*args)
         try:
             if summary:
@@ -439,6 +617,10 @@ class Experiment:
         :rtype: Ensemble
         """
         try:
+            print("name", name)
+            print("params", params)
+            print("RUN SETTINGS on ensemble", run_settings)
+            print("BATCH SETTINGS on ensemble", batch_settings)
             new_ensemble = Ensemble(
                 name,
                 params or {},
@@ -548,15 +730,16 @@ class Experiment:
         :return: the created ``Model``
         :rtype: Model
         """
-        path = init_default(getcwd(), path, str)
+        path = init_default(getcwd(), path, str)  # jpnote
 
         # mcb
         if path is None:
-            path = getcwd()
+            path = getcwd()  # jpnote
         if params is None:
             params = {}
 
         try:
+            print("\nrun settings in create model", run_settings)
             new_model = Model(
                 name, params, path, run_settings, batch_settings=batch_settings
             )
@@ -616,7 +799,21 @@ class Experiment:
         :rtype: RunSettings
         """
 
+        # jpnote : run settings
         try:
+            print(
+                "\nrun settings in create_run_settings",
+                settings.create_run_settings(
+                    self._launcher,
+                    exe,
+                    exe_args=exe_args,
+                    run_command=run_command,
+                    run_args=run_args,
+                    env_vars=env_vars,
+                    container=container,
+                    **kwargs,
+                ),
+            )
             return settings.create_run_settings(
                 self._launcher,
                 exe,
@@ -746,7 +943,7 @@ class Experiment:
         :type queue: str, optional
         :param single_cmd: run all shards with one (MPMD) command, defaults to True
         :type single_cmd: bool, optional
-        :param db_identifier: an identifier to distinguish this orchestrator in 
+        :param db_identifier: an identifier to distinguish this orchestrator in
             multiple-database experiments, defaults to "orchestrator"
         :type db_identifier: str, optional
         :raises SmartSimError: if detection of launcher or of run command fails
@@ -840,13 +1037,60 @@ class Experiment:
             disable_numparse=True,
         )
 
-    def _launch_summary(self, manifest: Manifest) -> None:
+    ## jpnotes
+    # databases:
+    # --
+
+    # models:
+
+    # manifest ::
+    #
+
+    ##
+
+    def _launch_summary_preview(self, *args) -> None:
+        # manifest: Manifest) -> None:
         """Experiment pre-launch summary of entities that will be launched
 
         :param manifest: Manifest of deployables.
         :type manifest: Manifest
         """
+        print(args)
+        manifest = args[0]  # want it to be able to take nothing ?
+        summary = "\n\n=== Launch Summary ===\n"
+        summary += f"Experiment: {self.name}\n"
+        summary += f"Experiment Path: {self.exp_path}\n"
+        summary += f"Launcher: {self._launcher}\n"
+        if manifest.models:
+            summary += f"Models: {len(manifest.models)}\n"
 
+        if self._control.orchestrator_active:
+            summary += "Database Status: active\n"
+        elif manifest.dbs:
+            summary += "Database Status: launching\n"
+            # jpnote: include what is missings
+        else:
+            summary += "Database Status: inactive\n"
+
+        summary += f"\n{str(manifest)}"
+
+        # do we want to list each individiual shard?
+
+        # listing colocated databases
+
+        # do we want to list exact command line arguments?
+
+        logger.info(summary)
+
+    def _launch_summary(self, manifest: Manifest) -> None:
+        # manifest: Manifest) -> None:
+        """Experiment pre-launch summary of entities that will be launched
+
+        :param manifest: Manifest of deployables.
+        :type manifest: Manifest
+        """
+        # print(args)
+        # manifest = args[0]  # want it to be able to take nothing ?
         summary = "\n\n=== Launch Summary ===\n"
         summary += f"Experiment: {self.name}\n"
         summary += f"Experiment Path: {self.exp_path}\n"

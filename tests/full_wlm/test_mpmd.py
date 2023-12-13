@@ -89,10 +89,10 @@ def test_mpmd(fileutils, wlmutils):
         settings.make_mpmd(deepcopy(settings))
 
         mpmd_model = exp.create_model("mmpd", path=test_dir, run_settings=settings)
-        exp.start(mpmd_model, block=True)
+        exp.start(mpmd_model, block=True, summary=True)
         statuses = exp.get_status(mpmd_model)
         assert all([stat == status.STATUS_COMPLETED for stat in statuses])
 
-        exp.start(mpmd_model, block=True)
+        exp.start(mpmd_model, block=True, summary=True)
         statuses = exp.get_status(mpmd_model)
         assert all([stat == status.STATUS_COMPLETED for stat in statuses])

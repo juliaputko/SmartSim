@@ -104,6 +104,7 @@ class Controller:
         self._jobs.kill_on_interrupt = kill_on_interrupt
         # register custom signal handler for ^C (SIGINT)
         signal.signal(signal.SIGINT, self._jobs.signal_interrupt)
+        print("\ntype in controller", type(manifest))
         self._launch(manifest)
 
         # start the job manager thread if not already started
@@ -499,6 +500,12 @@ class Controller:
             self._prep_entity_client_env(entity)
 
         step = self._launcher.create_step(entity.name, entity.path, entity.run_settings)
+
+        print(
+            "\n run settings in _create_job_step (make sure im not missing any changes)",
+            entity.run_settings,
+        )
+        print(step)
         return step
 
     def _prep_entity_client_env(self, entity: Model) -> None:
@@ -524,6 +531,9 @@ class Controller:
                     client_env[f"SSKEYIN{db_name}"] = ",".join(
                         [in_entity.name for in_entity in entity.incoming_entities]
                     )
+                    print("SSEKYIN???\n", entity.incoming_entities)
+                    print("SSKEYOUT??", entity.name)
+
                 if entity.query_key_prefixing():
                     client_env[f"SSKEYOUT{db_name}"] = entity.name
 
@@ -564,6 +574,8 @@ class Controller:
                 client_env[f"SR_DB_TYPE{db_name_colo}"] = STANDALONE
 
         entity.run_settings.update_env(client_env)
+
+    # print("the colocated env in run settings is updated now", entity.run_settings)
 
     def _save_orchestrator(self, orchestrator: Orchestrator) -> None:
         """Save the orchestrator object via pickle

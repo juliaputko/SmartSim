@@ -142,7 +142,7 @@ def test_singularity_args(fileutils):
     print(exp.summary())
 
 
-@pytest.mark.skipif(not singularity_exists, reason="Test needs singularity to run")
+# @pytest.mark.skipif(not singularity_exists, reason="Test needs singularity to run")
 def test_singularity_smartredis(fileutils, wlmutils):
     """Run two processes, each process puts a tensor on
     the DB, then accesses the other process's tensor.
@@ -161,11 +161,12 @@ def test_singularity_smartredis(fileutils, wlmutils):
     exp.generate(orc)
     exp.start(orc, block=False)
 
-    container = Singularity(containerURI)
+    # container = Singularity(containerURI)
 
     rs = exp.create_run_settings(
-        "python3", "producer.py --exchange", container=container
-    )
+        "python3", "producer.py --exchange"
+    )  # , container=container
+    # )
     params = {"mult": [1, -10]}
     ensemble = Ensemble(
         name="producer",

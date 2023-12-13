@@ -87,6 +87,8 @@ def create_batch_settings(
         "lsf": BsubBatchSettings,
     }
 
+    # jpnote preview batch settings
+
     if launcher == "auto":
         launcher = detect_launcher()
 
@@ -105,6 +107,7 @@ def create_batch_settings(
             account=account,
             **kwargs,
         )
+        print("in create_batch_settings", batch_settings)
         return batch_settings
 
     except KeyError:
@@ -147,6 +150,14 @@ def create_run_settings(
     :raises SmartSimError: if run_command=="auto" and detection fails
     """
     # all supported RunSettings child classes
+    print(
+        "\ncreate run_settings in settings",
+        launcher,
+        exe,
+        exe_args,
+        run_command,
+        run_args,
+    )
     supported: t.Dict[str, _TRunSettingsSelector] = {
         "aprun": lambda launcher: AprunSettings,
         "srun": lambda launcher: SrunSettings,
@@ -205,6 +216,13 @@ def create_run_settings(
     # 1) user specified and not implementation in SmartSim
     # 2) user supplied run_command=None
     # 3) local launcher being used and default of "auto" was passed.
+
+    print(
+        "after being set",
+        RunSettings(
+            exe, exe_args, run_command, run_args, env_vars, container=container
+        ),
+    )
     return RunSettings(
         exe, exe_args, run_command, run_args, env_vars, container=container
     )

@@ -41,7 +41,7 @@ def test_execute_cmd():
     assert isinstance(out, str)
     assert isinstance(err, str)
 
-
+# test the inverse of this jpnote - run test_execute async _cmd 
 def test_execute_async_cmd():
     proc = execute_async_cmd(["hostname"], cwd=".")
     proc.communicate()

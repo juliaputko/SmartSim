@@ -115,6 +115,8 @@ class Generator:
         self._gen_entity_list_dir(generator_manifest.ensembles)
         self._gen_entity_dirs(generator_manifest.models)
 
+        print("\n generate experiment stuff", self.gen_path)
+
     def set_tag(self, tag: str, regex: t.Optional[str] = None) -> None:
         """Set the tag used for tagging input files
 
@@ -143,7 +145,6 @@ class Generator:
         """Create the directory for an experiment if it does not
         already exist.
         """
-
         if path.isfile(self.gen_path):
             raise FileExistsError(
                 f"Experiment directory could not be created. {self.gen_path} exists"
@@ -160,7 +161,7 @@ class Generator:
         # this is to avoid gigantic files in case the user repeats
         # generation several times. The information is anyhow
         # redundant, as it is also written in each entity's dir
-        with open(self.log_file, mode= 'w', encoding='utf-8') as log_file:
+        with open(self.log_file, mode="w", encoding="utf-8") as log_file:
             dt_string = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
             log_file.write(f"Generation start date and time: {dt_string}\n")
 
@@ -176,6 +177,7 @@ class Generator:
             orc_path = path.join(self.gen_path, orchestrator.name)
 
             orchestrator.set_path(orc_path)
+            print("\n orchestrator path", orc_path)
             # Always remove orchestrator files if present.
             if path.isdir(orc_path):
                 shutil.rmtree(orc_path, ignore_errors=True)
@@ -199,7 +201,7 @@ class Generator:
                     mkdir(elist_dir)
             else:
                 mkdir(elist_dir)
-            elist.path = elist_dir
+            elist.path = elist_dir  # jp note for generate stuff
 
             self._gen_entity_dirs(list(elist.models), entity_list=elist)
 
@@ -236,7 +238,9 @@ class Generator:
                     )
                     raise FileExistsError(error)
             pathlib.Path(dst).mkdir(exist_ok=True)
-            entity.path = dst
+            entity.path = dst  # jpnote
+
+            print("\n entity path", entity.path)
 
             self._copy_entity_files(entity)
             self._link_entity_files(entity)
@@ -301,8 +305,7 @@ class Generator:
         file_to_tables: t.Dict[str, str] = {}
         for file, params in files_to_params.items():
             used_params.update(params)
-            table = tabulate(params.items(),
-                             headers=["Name", "Value"])
+            table = tabulate(params.items(), headers=["Name", "Value"])
             file_to_tables[relpath(file, self.gen_path)] = table
 
         if used_params:
@@ -314,15 +317,15 @@ class Generator:
                 msg=f"Configured model {entity.name} with params {used_params_str}",
             )
             file_table = tabulate(
-                    file_to_tables.items(),
-                    headers=["File name", "Parameters"],
-                )
+                file_to_tables.items(),
+                headers=["File name", "Parameters"],
+            )
             log_entry = f"Model name: {entity.name}\n{file_table}\n\n"
             with open(self.log_file, mode="a", encoding="utf-8") as logfile:
                 logfile.write(log_entry)
-            with open(join(entity.path, "smartsim_params.txt"),
-                      mode="w",
-                      encoding="utf-8") as local_logfile:
+            with open(
+                join(entity.path, "smartsim_params.txt"), mode="w", encoding="utf-8"
+            ) as local_logfile:
                 local_logfile.write(log_entry)
 
         else:

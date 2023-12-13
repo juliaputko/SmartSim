@@ -43,10 +43,11 @@ class LocalLauncher(Launcher):
 
     @property
     def supported_rs(self) -> t.Dict[t.Type[SettingsBase], t.Type[Step]]:
-       return {
+        print("running locally")
+        return {
             RunSettings: LocalStep,
-        }    
-    
+        }
+
     def __init__(self) -> None:
         self.task_manager = TaskManager()
         self.step_mapping = StepMapping()
@@ -56,6 +57,8 @@ class LocalLauncher(Launcher):
 
         :return: Step object
         """
+
+        print("\n create step in local ")
         if not isinstance(step_settings, RunSettings):
             raise TypeError(
                 f"Local Launcher only supports entities with RunSettings, not {type(step_settings)}"
@@ -63,7 +66,9 @@ class LocalLauncher(Launcher):
         step = LocalStep(name, cwd, step_settings)
         return step
 
-    def get_step_update(self, step_names: t.List[str]) -> t.List[t.Tuple[str, t.Optional[StepInfo]]]:
+    def get_step_update(
+        self, step_names: t.List[str]
+    ) -> t.List[t.Tuple[str, t.Optional[StepInfo]]]:
         """Get status updates of each job step name provided
 
         :param step_names: list of step_names
@@ -107,9 +112,20 @@ class LocalLauncher(Launcher):
         output = open(out, "w+")
         error = open(err, "w+")
         cmd = step.get_launch_cmd()
+        print("\n get launch cmd", cmd)
+        # ['/home/users/putko/scratch/miniconda3/envs/launchsum/bin/python',
+        #  '-m',
+        # 'smartsim._core.entrypoints.redis',
+        # '+orc-exe=/lus/cls01029/putko/test/smartsim/smartsim/_core/bin/redis-server',
+        # '+conf-file=/lus/cls01029/putko/test/smartsim/smartsim/_core/config/redis.conf',
+        # '+rai-module', '--loadmodule', '/lus/cls01029/putko/test/smartsim/smartsim/_core/lib/redisai.so',
+        # '+name=orchestrator_0', '+port=6780', '+ifname=ipogif0']
+
+        # ['/usr/bin/echo', 'Hello', 'World']
 
         # LocalStep.run_command omits env, include it here
         passed_env = step.env if isinstance(step, LocalStep) else None
+        # print("what is the env", passed_env)
 
         task_id = self.task_manager.start_task(
             cmd, step.cwd, env=passed_env, out=output.fileno(), err=error.fileno()
@@ -127,7 +143,7 @@ class LocalLauncher(Launcher):
         """
         # step_id is task_id for local. Naming for consistency
         step_id = self.step_mapping[step_name].task_id
-        
+
         self.task_manager.remove_task(str(step_id))
         _, rc, out, err = self.task_manager.get_task_update(str(step_id))
         step_info = UnmanagedStepInfo("Cancelled", rc, out, err)

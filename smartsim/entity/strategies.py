@@ -33,6 +33,7 @@ from itertools import product
 
 # create permutations of all parameters
 # single model if parameters only have one value
+
 def create_all_permutations(
     param_names: t.List[str], param_values: t.List[t.List[str]], _n_models: int = 0
 ) -> t.List[t.Dict[str, str]]:

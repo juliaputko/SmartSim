@@ -27,6 +27,9 @@ from __future__ import annotations
 import copy
 import typing as t
 
+import shutil
+from settings import Singularity
+
 from smartsim.settings.containers import Container
 
 from .._core.utils.helpers import expand_exe_path, fmt_dict, is_valid_cmd
@@ -38,8 +41,9 @@ logger = get_logger(__name__)
 class SettingsBase:
     ...
 
+
 # pylint: disable=too-many-public-methods
-class RunSettings(SettingsBase):
+class RunSettings(SettingsBase):  # jpnote: srun setting etc etc.
     # pylint: disable=unused-argument
 
     def __init__(
@@ -95,6 +99,53 @@ class RunSettings(SettingsBase):
         self._run_command = run_command
         self.in_batch = False
         self.colocated_db_settings: t.Optional[t.Dict[str, str]] = None
+
+    ## from
+    def create_job_step_in_the_runsettings(self) -> str:
+        # print("\n in the run settings")
+        # how to build the job step off of the entity in the run settings
+
+        # what else is needed in the create step in the
+
+        #  def get_launch_cmd(self) -> t.List[str]:
+
+        cmd = []
+
+        # -------building the launch command here ----------------------
+        # run_settings == selfs --> can get the run settings from here
+
+        # Add run command and args if user specified
+        # default is no run command for local job steps
+        if self.run_command:
+            cmd.append(self.run_command)
+            run_args = self.format_run_args()
+            cmd.extend(run_args)
+
+        if self.colocated_db_settings:
+            # Replace the command with the entrypoint wrapper script
+            if not (bash := shutil.which("bash")):
+                raise RuntimeError("Unable to locate bash interpreter")
+
+            launch_script_path = (
+                self.get_colocated_launch_script()
+            )  # jp -- what is this -- how to retreive -- need to bring it here
+
+            # print("\n launch_script_path", launch_script_path)
+            cmd.extend([bash, launch_script_path])
+
+        container = self.container
+        if container and isinstance(container, Singularity):
+            # pylint: disable-next=protected-access
+            cmd += container._container_cmds(self.cwd)
+
+        # build executable
+        cmd.extend(self.exe)
+        if self.exe_args:
+            cmd.extend(self.exe_args)
+
+        return cmd
+
+        # this is the launch step created..
 
     @property
     def exe_args(self) -> t.Union[str, t.List[str]]:
@@ -548,6 +599,7 @@ class RunSettings(SettingsBase):
         for arg, value in self.run_args.items():
             formatted.append(arg)
             formatted.append(str(value))
+        print("\nFORMATTED\n", formatted)
         return formatted
 
     def format_env_vars(self) -> t.List[str]:
@@ -576,7 +628,7 @@ class RunSettings(SettingsBase):
         return string
 
 
-class BatchSettings(SettingsBase):
+class BatchSettings(SettingsBase):  # jpnote
     def __init__(
         self,
         batch_cmd: str,

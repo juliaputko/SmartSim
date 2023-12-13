@@ -104,8 +104,14 @@ class WLMLauncher(Launcher):  # cov-wlm
         :return: step instance
         :rtype: Step
         """
+
         try:
-            step_class = self.supported_rs[type(step_settings)]
+            step_class = self.supported_rs[
+                type(step_settings)
+            ]  # jpnote we know srun settings = srun step
+            # --> name, cwd and settings --- can be called fdirectly from run setting (self -- is the step setting)
+            # may not need the entire step
+
         except KeyError:
             raise SSUnsupportedError(
                 f"RunSettings type {type(step_settings)} not supported by this launcher"
@@ -176,6 +182,6 @@ class WLMLauncher(Launcher):  # cov-wlm
     # pylint: disable-next=no-self-use
     def _get_managed_step_update(
         self,
-        step_ids: t.List[str], # pylint: disable=unused-argument
+        step_ids: t.List[str],  # pylint: disable=unused-argument
     ) -> t.List[StepInfo]:  # pragma: no cover
         return []

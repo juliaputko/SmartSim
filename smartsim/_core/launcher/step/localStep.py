@@ -42,11 +42,14 @@ class LocalStep(Step):
     def get_launch_cmd(self) -> t.List[str]:
         cmd = []
 
+        print("\n JP NOTE GETS HERE - local step")
+
         # Add run command and args if user specified
         # default is no run command for local job steps
         if self.run_settings.run_command:
             cmd.append(self.run_settings.run_command)
             run_args = self.run_settings.format_run_args()
+            print("\nwhat do they look like", run_args)
             cmd.extend(run_args)
 
         if self.run_settings.colocated_db_settings:
@@ -55,6 +58,7 @@ class LocalStep(Step):
                 raise RuntimeError("Unable to locate bash interpreter")
 
             launch_script_path = self.get_colocated_launch_script()
+            # print("\n launch_script_path", launch_script_path)
             cmd.extend([bash, launch_script_path])
 
         container = self.run_settings.container
@@ -66,6 +70,8 @@ class LocalStep(Step):
         cmd.extend(self.run_settings.exe)
         if self.run_settings.exe_args:
             cmd.extend(self.run_settings.exe_args)
+
+        print("\nCMD IN get_launch_cmd", cmd)
         return cmd
 
     def _set_env(self) -> t.Dict[str, str]:

@@ -115,6 +115,7 @@ def execute_async_cmd(
     """
     if VERBOSE_SHELL:
         logger.debug(f"Executing command: {' '.join(cmd_list)}")
+    print(f"Executing command: {' '.join(cmd_list)}")
 
     try:
         popen_obj = psutil.Popen(

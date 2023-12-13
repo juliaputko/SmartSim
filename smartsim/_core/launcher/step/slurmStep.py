@@ -68,9 +68,11 @@ class SbatchStep(Step):
         :param step: a job step instance e.g. SrunStep
         :type step: Step
         """
+
         launch_cmd = ["cd", step.cwd, ";"]
         launch_cmd += step.get_launch_cmd()
         self.step_cmds.append(launch_cmd)
+        print("\nadd job step to this batch?", launch_cmd)
         logger.debug(f"Added step command to batch for {step.name}")
 
     def _write_script(self) -> str:
@@ -82,6 +84,10 @@ class SbatchStep(Step):
         batch_script = self.get_step_file(ending=".sh")
         output, error = self.get_output_files()
         with open(batch_script, "w", encoding="utf-8") as script_file:
+            print("#!/bin/bash\n\n")
+            print(f"#SBATCH --output={output}\n")
+            print(f"#SBATCH --error={error}\n")
+            print(f"#SBATCH --job-name={self.name}\n")
             script_file.write("#!/bin/bash\n\n")
             script_file.write(f"#SBATCH --output={output}\n")
             script_file.write(f"#SBATCH --error={error}\n")
@@ -89,6 +95,7 @@ class SbatchStep(Step):
 
             # add additional sbatch options
             for opt in self.batch_settings.format_batch_args():
+                print("sbatchargs", f"#SBATCH {opt}\n")
                 script_file.write(f"#SBATCH {opt}\n")
 
             for cmd in self.batch_settings.preamble:
@@ -100,6 +107,7 @@ class SbatchStep(Step):
                 if i == len(self.step_cmds) - 1:
                     script_file.write("\n")
                     script_file.write("wait\n")
+        print(batch_script)
         return batch_script
 
 

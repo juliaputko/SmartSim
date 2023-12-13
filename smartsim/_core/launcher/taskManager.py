@@ -127,6 +127,11 @@ class TaskManager:
         :rtype: int
         """
         with self._lock:
+            print("CMD LIST", cmd_list)
+            print("CWD", cwd)
+            #  print("ENV", env)
+            print("OUT", out)
+            print("ERR", err)
             proc = execute_async_cmd(cmd_list, cwd, env=env, out=out, err=err)
             task = Task(proc)
             if VERBOSE_TM:

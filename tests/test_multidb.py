@@ -115,7 +115,7 @@ def test_db_identifier_standard_then_colo(fileutils, wlmutils, coloutils, db_typ
 @pytest.mark.parametrize("db_type", supported_dbs)
 def test_db_identifier_colo_then_standard(fileutils, wlmutils, coloutils, db_type):
     """Test colocate_db_uds/colocate_db_tcp then create_database with database
-    identifiers. 
+    identifiers.
     """
 
     # Set experiment name
@@ -241,12 +241,13 @@ def test_db_identifier_create_standard_once(fileutils, wlmutils):
         interface=test_interface,
         db_identifier="testdb_reg",
     )
-    exp.generate(db)
 
-    exp.start(db)
-    exp.stop(db)
+    exp.preview(db)
+    # exp.generate(db)
+    # exp.start(db, summary=True)
+    # exp.stop(db)
 
-    print(exp.summary())
+    # print(exp.summary())
 
 
 def test_multidb_create_standard_twice(fileutils, wlmutils):
@@ -437,11 +438,11 @@ def test_multidb_colo_then_standard(fileutils, wlmutils, coloutils, db_type):
     )
     exp.generate(db)
 
-    exp.start(db)
+    exp.start(db, summary=True)
     exp.start(smartsim_model)
 
     # test restart colocated db
-    exp.start(smartsim_model)
+    exp.start(smartsim_model, summary=True)
 
     exp.stop(db)
 

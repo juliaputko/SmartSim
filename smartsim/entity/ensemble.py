@@ -119,6 +119,7 @@ class Ensemble(EntityList[Model]):
 
         :raises UserStrategyError: if user generation strategy fails
         """
+        # print("in initialize_entities -- does this come up")
         strategy = self._set_strategy(kwargs.pop("perm_strat"))
         replicas = kwargs.pop("replicas", None)
 
@@ -423,6 +424,7 @@ class Ensemble(EntityList[Model]):
             inputs=inputs,
             outputs=outputs,
         )
+        print("DB_MODEL", db_model)
         self._db_models.append(db_model)
         for entity in self.models:
             self._extend_entity_db_models(entity, [db_model])
@@ -512,8 +514,11 @@ class Ensemble(EntityList[Model]):
         :type first_device: int
         """
         db_script = DBScript(
-            name=name, script=function, device=device,
-            devices_per_node=devices_per_node, first_device=first_device
+            name=name,
+            script=function,
+            device=device,
+            devices_per_node=devices_per_node,
+            first_device=first_device,
         )
         self._db_scripts.append(db_script)
         for entity in self.models:

@@ -72,6 +72,8 @@ class EntityFiles:
         self.tagged_hierarchy = None
         self._check_files()
 
+    # jpnote: directories - exec and stored -- here
+
     def _check_files(self) -> None:
         """Ensure the files provided by the user are of the correct
            type and actually exist somewhere on the filesystem.

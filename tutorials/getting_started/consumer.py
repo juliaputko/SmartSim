@@ -15,6 +15,7 @@ c = Client(None, logger_name="SmartSim")
 # Incoming entity prefixes are stored as a comma-separated list
 # in the env variable SSKEYIN
 keyin = os.getenv("SSKEYIN")
+print("SSKEYIN", keyin)
 data_sources = keyin.split(",")
 data_sources.sort()
 

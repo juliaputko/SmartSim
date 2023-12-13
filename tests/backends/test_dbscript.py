@@ -125,7 +125,7 @@ def test_db_script(fileutils, wlmutils, mlutils):
 
     # Launch and check successful completion
     try:
-        exp.start(db, smartsim_model, block=True)
+        exp.start(db, smartsim_model, block=True, summary=True)
         statuses = exp.get_status(smartsim_model)
         assert all([stat == status.STATUS_COMPLETED for stat in statuses])
     finally:
@@ -175,6 +175,11 @@ def test_db_script_ensemble(fileutils, wlmutils, mlutils):
     torch_script_str = "def negate(x):\n\treturn torch.neg(x)\n"
 
     # Add script via file for the Ensemble object
+
+    print("script path", torch_script)
+    print("device", test_device)
+    print("devices per node", test_num_gpus)
+
     ensemble.add_script(
         "test_script1",
         script_path=torch_script,
@@ -220,7 +225,7 @@ def test_db_script_ensemble(fileutils, wlmutils, mlutils):
     assert all([len(entity._db_scripts) == 3 for entity in ensemble])
 
     try:
-        exp.start(db, ensemble, block=True)
+        exp.start(db, ensemble, block=True, summary=True)
         statuses = exp.get_status(ensemble)
         assert all([stat == status.STATUS_COMPLETED for stat in statuses])
     finally:
@@ -251,6 +256,8 @@ def test_colocated_db_script(fileutils, wlmutils, mlutils):
     colo_settings = exp.create_run_settings(exe=sys.executable, exe_args=test_script)
     colo_settings.set_nodes(1)
     colo_settings.set_tasks_per_node(1)
+
+    print("colo_settings", colo_settings)
 
     # Create model with colocated database
     colo_model = exp.create_model("colocated_model", colo_settings)
@@ -598,6 +605,7 @@ def test_db_script_errors(fileutils, wlmutils, mlutils):
     with pytest.raises(SSUnsupportedError):
         colo_ensemble.add_model(colo_model)
 
+
 def test_inconsistent_params_db_script(fileutils):
     """Test error when devices_per_node>1 and when devices is set to CPU in DBScript constructor"""
 
@@ -611,9 +619,9 @@ def test_inconsistent_params_db_script(fileutils):
             first_device=0,
         )
     assert (
-            ex.value.args[0]
-            == "Cannot set devices_per_node>1 if CPU is specified under devices"
-        )
+        ex.value.args[0]
+        == "Cannot set devices_per_node>1 if CPU is specified under devices"
+    )
     with pytest.raises(SSUnsupportedError) as ex:
         _ = DBScript(
             name="test_script_db",
@@ -623,6 +631,6 @@ def test_inconsistent_params_db_script(fileutils):
             first_device=5,
         )
     assert (
-            ex.value.args[0]
-            == "Cannot set first_device>0 if CPU is specified under devices"
-        )
+        ex.value.args[0]
+        == "Cannot set first_device>0 if CPU is specified under devices"
+    )
