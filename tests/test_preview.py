@@ -268,7 +268,7 @@ def test_ensembles_preview(test_dir, wlmutils):
     )
 
     preview_manifest = Manifest(ensemble)
-    output = previewrenderer.render(exp, preview_manifest)
+    output = previewrenderer.render(exp, preview_manifest, verbosity_level="developer")
 
     assert "Ensemble name" in output
     assert "Members" in output
@@ -277,7 +277,8 @@ def test_ensembles_preview(test_dir, wlmutils):
 
 def test_preview_models_and_ensembles(test_dir, wlmutils):
     """
-    Test preview of separate model entity and ensemble entity
+    Test preview of separate model entity and ensemble entity at
+    the most verbose verbosity level
     """
     exp_name = "test-model-and-ensemble"
     test_dir = pathlib.Path(test_dir) / exp_name
@@ -295,7 +296,7 @@ def test_preview_models_and_ensembles(test_dir, wlmutils):
     exp.generate(hello_world_model, spam_eggs_model, hello_ensemble)
 
     preview_manifest = Manifest(hello_world_model, spam_eggs_model, hello_ensemble)
-    output = previewrenderer.render(exp, preview_manifest)
+    output = previewrenderer.render(exp, preview_manifest, verbosity_level="developer")
 
     assert "Models" in output
     assert "echo-hello" in output
@@ -377,7 +378,7 @@ def test_ensemble_preview_attached_files(fileutils, test_dir, wlmutils):
     preview_manifest = Manifest(ensemble)
 
     # Call preview renderer for testing output
-    output = previewrenderer.render(exp, preview_manifest)
+    output = previewrenderer.render(exp, preview_manifest, verbosity_level="developer")
 
     # Evaluate output
     assert "Tagged Files for model configuration" in output
@@ -421,7 +422,9 @@ def test_preview_models_and_ensembles_html_format(test_dir, wlmutils):
     preview_manifest = Manifest(hello_world_model, spam_eggs_model, hello_ensemble)
 
     # Call preview renderer for testing output
-    output = previewrenderer.render(exp, preview_manifest, output_format="html")
+    output = previewrenderer.render(
+        exp, preview_manifest, output_format="html", verbosity_level="developer"
+    )
 
     # Evaluate output
     assert "Models" in output
@@ -431,6 +434,51 @@ def test_preview_models_and_ensembles_html_format(test_dir, wlmutils):
     assert "Ensembles" in output
     assert "echo-ensemble_1" in output
     assert "echo-ensemble_2" in output
+
+
+def test_preview_ensembles_verbosity_level_developer(test_dir, wlmutils):
+    """
+    Test ensembles with verbosity set to DEVELOPER
+    """
+    # Prepare entities
+    exp_name = "test-model-and-ensemble"
+    test_dir = pathlib.Path(test_dir) / exp_name
+    test_dir.mkdir(parents=True)
+    test_launcher = wlmutils.get_test_launcher()
+    exp = Experiment(exp_name, exp_path=str(test_dir), launcher=test_launcher)
+    rs1 = exp.create_run_settings("echo", ["hello", "world"])
+    hello_ensemble = exp.create_ensemble("echo-ensemble", run_settings=rs1, replicas=3)
+    exp.generate(hello_ensemble)
+    preview_manifest = Manifest(hello_ensemble)
+    # Call preview renderer for testing output
+    output = previewrenderer.render(exp, preview_manifest, verbosity_level="developer")
+    # Evaluate output
+    assert "echo-ensemble_0" in output
+    assert "echo-ensemble_1" in output
+    assert "echo-ensemble_2" in output
+
+
+def test_preview_ensembles_verbosity_level_info(test_dir, wlmutils):
+    """
+    Test ensembles with verbosity set to INFO
+    """
+    # Prepare entities
+    exp_name = "test-model-and-ensemble"
+    test_dir = pathlib.Path(test_dir) / exp_name
+    test_dir.mkdir(parents=True)
+    test_launcher = wlmutils.get_test_launcher()
+    exp = Experiment(exp_name, exp_path=str(test_dir), launcher=test_launcher)
+    rs1 = exp.create_run_settings("echo", ["hello", "world"])
+    hello_ensemble = exp.create_ensemble("echo-ensemble", run_settings=rs1, replicas=3)
+
+    exp.generate(hello_ensemble)
+    preview_manifest = Manifest(hello_ensemble)
+    # Call preview renderer for testing output
+    output = previewrenderer.render(exp, preview_manifest, verbosity_level="info")
+    # Evaluate output
+    assert "echo-ensemble_0" in output
+    assert "echo-ensemble_2" in output
+    assert "echo-ensemble_1" not in output
 
 
 def test_output_format_error():

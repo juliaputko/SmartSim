@@ -1,14 +1,28 @@
-        {% for ensemble in manifest.ensembles -%}
-        = Ensemble name: {{ ensemble.name }}
-            Members: {{ ensemble|length }}
-            Ensemble parameters:  
-                {%- for key, value in ensemble.params.items() %}
-                {{ key }}: {{ '{:^9}'.format(value|string)|truncate(81,true,'...')}}
-                    {%- endfor %}      
+    {%- for ensemble in manifest.ensembles %}
+    = Ensemble name: {{ ensemble.name }}
+        Members: {{ ensemble|length }}
+        {%- if ensemble.params %}
+        Ensemble parameters:  
+            {%- for key, value in ensemble.params.items() %}
+            {{ key }}: {{ '{:^9}'.format(value|string)|truncate(81,true,'...')}}
+                {%- endfor %} 
+        {% endif %}
+        {% if verbosity_level == 'info' %}
+        {%- set model = ensemble.models[0] %}
+        -- {% include 'preview/model_plain_text.template' %}
+        --
+        ...
+
+        {% set model = ensemble.models[(ensemble.models | length)-1] -%}  
+        -- {% include 'preview/model_plain_text.template' %}
+        --
+        {% else %}
+        {{ verbosity_level }}
         {%- for model in ensemble %}
         -- {% include 'preview/model_plain_text.template' %}
         --
         {%- endfor %}
+        {% endif %}
         {% endfor -%}
         {%- set model = ensemble.models[0] -%}
         {% if manifest.dbs or model.run_settings.colocated_db_settings %}
