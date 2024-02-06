@@ -65,7 +65,6 @@ def render(
     :param verbosity_level: the verbosity level
     :type verbosity_level: _VerbosityLevelString
     :param output_format: the output format.
-    If no output format is set, the preview will be output to stdout
     :type output_format: _OutputFormatString
     """
 
@@ -115,7 +114,6 @@ def _check_verbosity_level(
     """
     Check that the given verbosity level is valid.
     """
-
     if verbosity_level not in (Verbosity.INFO, Verbosity.DEBUG, Verbosity.DEVELOPER):
         logger.warning(
             f"'{verbosity_level}' is an unsupported verbosity level requested.\
