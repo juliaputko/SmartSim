@@ -10,10 +10,23 @@
                 {%- endfor %}  
             </ul>   
             {% endif %} 
+
+    {% if verbosity_level == 'info' %}
+        {%- set model = ensemble.models[0] %}
+        <li class="inline">--&nbsp;</li>{% include 'preview/model_html.template' %}
+        <li>--</li>
+
+        <li>...</li>
+
+        {% set model = ensemble.models[(ensemble.models | length)-1] -%}  
+         <li class="inline">--&nbsp;</li>{% include 'preview/model_html.template' %}
+        <li>--</li>
+    {% else %}
         {%- for model in ensemble %}
         <li class="inline">--&nbsp;</li>{% include 'preview/model_html.template' %}
         <li>--</li>
         {%- endfor %}
+        {% endif %}
         {%- set model = ensemble.models[0] -%}
         {% if manifest.dbs or model.run_settings.colocated_db_settings %}
         {%- include "preview/clientconfig.template" %}

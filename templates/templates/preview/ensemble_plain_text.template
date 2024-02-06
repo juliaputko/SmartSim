@@ -17,7 +17,6 @@
         -- {% include 'preview/model_plain_text.template' %}
         --
         {% else %}
-        {{ verbosity_level }}
         {%- for model in ensemble %}
         -- {% include 'preview/model_plain_text.template' %}
         --

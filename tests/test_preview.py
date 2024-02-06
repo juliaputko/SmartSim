@@ -475,10 +475,38 @@ def test_preview_ensembles_verbosity_level_info(test_dir, wlmutils):
     preview_manifest = Manifest(hello_ensemble)
     # Call preview renderer for testing output
     output = previewrenderer.render(exp, preview_manifest, verbosity_level="info")
+
+    print(output)
     # Evaluate output
     assert "echo-ensemble_0" in output
     assert "echo-ensemble_2" in output
     assert "echo-ensemble_1" not in output
+
+
+def test_preview_info_html(test_dir, wlmutils):
+    """
+    Test ensembles with verbosity set to INFO
+    """
+    # Prepare entities
+    exp_name = "test-model-and-ensemble"
+    test_dir = pathlib.Path(test_dir) / exp_name
+    test_dir.mkdir(parents=True)
+    test_launcher = wlmutils.get_test_launcher()
+    exp = Experiment(exp_name, exp_path=str(test_dir), launcher=test_launcher)
+    rs1 = exp.create_run_settings("echo", ["hello", "world"])
+    hello_ensemble = exp.create_ensemble("echo-ensemble", run_settings=rs1, replicas=3)
+
+    exp.generate(hello_ensemble)
+    # preview_manifest = Manifest(hello_ensemble)
+    # Call preview renderer for testing output
+    # output = previewrenderer.render(exp, preview_manifest, verbosity_level="info")
+    exp.preview(hello_ensemble, output_format="html", output_filename="ens.html")
+
+    # print(output)
+    # # Evaluate output
+    # assert "echo-ensemble_0" in output
+    # assert "echo-ensemble_2" in output
+    # assert "echo-ensemble_1" not in output
 
 
 def test_output_format_error():
