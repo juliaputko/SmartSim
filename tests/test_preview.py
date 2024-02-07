@@ -188,7 +188,7 @@ def test_model_preview_properties(test_dir, wlmutils):
 
     # Evaluate output for hello world model
     assert "echo-hello" in rendered_preview
-    assert "/usr/bin/bash" in rendered_preview
+    assert "/bin/bash" in rendered_preview
     assert "multi_tags_template.sh" in rendered_preview
     assert "False" in rendered_preview
     assert "port" in rendered_preview
@@ -197,7 +197,7 @@ def test_model_preview_properties(test_dir, wlmutils):
     assert "unbreakable_password" in rendered_preview
 
     assert "echo-hello" == hello_world_model.name
-    assert "/usr/bin/bash" == hello_world_model.run_settings.exe[0]
+    assert "/bin/bash" in hello_world_model.run_settings.exe[0]
     assert "multi_tags_template.sh" == hello_world_model.run_settings.exe_args[0]
     assert None == hello_world_model.batch_settings
     assert "port" in list(hello_world_model.params.items())[0]
@@ -207,11 +207,11 @@ def test_model_preview_properties(test_dir, wlmutils):
 
     # Evaluate outputfor spam eggs model
     assert "echo-spam" in rendered_preview
-    assert "/usr/bin/echo" in rendered_preview
+    assert "bin/echo" in rendered_preview
     assert "spam" in rendered_preview
     assert "eggs" in rendered_preview
     assert "echo-spam" == spam_eggs_model.name
-    assert "/usr/bin/echo" == spam_eggs_model.run_settings.exe[0]
+    assert "/bin/echo" in spam_eggs_model.run_settings.exe[0]
     assert "spam" == spam_eggs_model.run_settings.exe_args[0]
     assert "eggs" == spam_eggs_model.run_settings.exe_args[1]
 
@@ -276,6 +276,40 @@ def test_model_key_prefixing(test_dir, wlmutils):
     assert "DataSets: On" in output
     assert "Models/Scripts: Off" in output
     assert "Aggregation Lists: On" in output
+
+
+def test_model_verb(fileutils, test_dir, wlmutils):
+    """
+    Test model with tagged files in preview.
+    """
+    # Prepare entities
+    exp_name = "test_model_preview_parameters"
+    test_launcher = wlmutils.get_test_launcher()
+    exp = Experiment(exp_name, exp_path=test_dir, launcher=test_launcher)
+
+    model_params = {"port": 6379, "password": "unbreakable_password"}
+    model_settings = RunSettings("bash", "multi_tags_template.sh")
+
+    hello_world_model = exp.create_model(
+        "echo-hello", run_settings=model_settings, params=model_params
+    )
+
+    config = fileutils.get_test_conf_path(
+        osp.join("generator_files", "multi_tags_template.sh")
+    )
+    hello_world_model.attach_generator_files(to_configure=[config])
+    exp.generate(hello_world_model, overwrite=True)
+
+    preview_manifest = Manifest(hello_world_model)
+
+    # Execute preview method
+    rendered_preview = previewrenderer.render(
+        exp, preview_manifest, verbosity_level="debug"
+    )
+
+    # exp.preview(hello_world_model, verbosity_level='developer')
+
+    assert "Tagged Files" in rendered_preview
 
 
 def test_output_format_error():

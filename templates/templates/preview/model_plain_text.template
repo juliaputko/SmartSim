@@ -1,3 +1,4 @@
+
 {%- if model is defined -%}Model name: {{ model.name }}
         Executable:  
         {%- for param in model.run_settings.exe %}
@@ -18,6 +19,7 @@
             {{ param }}: {{ value }}
         {%- endfor -%}
         {% endif %}
+    {%- if verbosity_level == 'debug' or verbosity_level == 'developer' %}
         {%- if model.files %}
         {%- if model.files.tagged %}
         Tagged Files for model configuration: 
@@ -41,6 +43,7 @@
             {% endfor %}
         {%- endif %}
         {%- endif %}
+    {%- endif %}
         {%- if model.run_settings.colocated_db_settings %}
         Colocated: 
             Database identifier: {{ model.run_settings.colocated_db_settings.db_identifier}}
@@ -91,3 +94,4 @@
         {%- endif %}
         {%- endif %}
 {%- endif %}
+{{ verbosity_level }}
