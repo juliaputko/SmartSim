@@ -70,6 +70,13 @@ def render(
 
     verbosity_level = _check_verbosity_level(verbosity_level)
 
+    if verbosity_level == Verbosity.INFO:
+        logger.warning(
+            "Some items were hidden. Set to a higher verbosity to view hidden fields"
+        )
+
+    # logger.warning("Some items were too large to display. Write preview output to file")
+
     loader = jinja2.PackageLoader("templates")
     env = jinja2.Environment(loader=loader, autoescape=True)
 
@@ -86,7 +93,6 @@ def render(
         config=CONFIG,
         verbosity_level=verbosity_level,
     )
-    print(rendered_preview)
     return rendered_preview
 
 
