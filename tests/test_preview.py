@@ -102,6 +102,15 @@ def test_preview_output_format_html_to_file(test_dir, wlmutils):
     assert path.is_file()
 
 
+#     Should we check that HTML tags exist or anything else about the content of the output file? I'd consider looking for something like <html> just to be sure it didn't fall back on a "default" format
+
+# What happens if i pass a path that is invalid? We might already have tests for the core functionality of preview like handling bad paths.
+
+# What happens if i give a output format that is valid but the template is incorrect. Ditto on potentially already covered.
+
+## potentially makes more sense to compare it against a correctly formatted html file -- and make sure they are equal
+
+
 def test_preview_model_output_format(test_dir, wlmutils):
     """
     Test that an html file is rendered for Model preview
