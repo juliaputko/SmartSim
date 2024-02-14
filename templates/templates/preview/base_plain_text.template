@@ -1,0 +1,18 @@
+
+{% include "preview/experiment_plain_text.template" %}
+{%- if manifest.has_deployable %}
+
+=== Entity Preview === 
+
+{%- if manifest.models %}
+    == Models == 
+{% for model in manifest.models %}   
+    = {% include "preview/model_plain_text.template" %}
+    {%- if manifest.dbs or model.run_settings.colocated_db_settings %}
+    {% include "preview/clientconfig_plain_text.template" %}
+    {%- endif %}
+    =
+{%- endfor %}
+{%- endif -%}
+
+{%- endif -%}
