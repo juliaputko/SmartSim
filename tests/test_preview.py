@@ -157,6 +157,55 @@ def test_demo_model_preview_properties(test_dir, wlmutils):
     exp.preview(hello_world_model, spam_eggs_model)
 
 
+def test_demo_model_tagged_files(test_dir, wlmutils, fileutils):
+    """ """
+    # Prepare entities
+    exp_name = "test_model_preview_parameters"
+    test_launcher = wlmutils.get_test_launcher()
+    exp = Experiment(exp_name, exp_path=test_dir, launcher=test_launcher)
+
+    model_params = {"port": 6379, "password": "unbreakable_password"}
+    model_settings = RunSettings("bash", "multi_tags_template.sh")
+
+    hello_world_model = exp.create_model(
+        "echo-hello", run_settings=model_settings, params=model_params
+    )
+
+    config = fileutils.get_test_conf_path(
+        osp.join("generator_files", "multi_tags_template.sh")
+    )
+    hello_world_model.attach_generator_files(to_configure=[config])
+    exp.generate(hello_world_model, overwrite=True)
+
+    exp.preview(hello_world_model)
+
+
+def test_demo_model_key_prefixing(test_dir, wlmutils):
+    """
+    Test preview for enabling key prefixing for a Model
+    """
+
+    # Prepare entities
+    exp_name = "test_model_key_prefixing"
+    test_launcher = wlmutils.get_test_launcher()
+    exp = Experiment(exp_name, exp_path=test_dir, launcher=test_launcher)
+
+    db = exp.create_database(port=6780, interface="lo")
+    exp.generate(db, overwrite=True)
+    rs1 = exp.create_run_settings("echo", ["hello", "world"])
+    model = exp.create_model("model_test", run_settings=rs1)
+
+    # enable key prefixing on model
+    model.enable_key_prefixing()
+    exp.generate(model, overwrite=True)
+
+    exp.preview(model)
+
+    # --ensemble demo --
+
+    # everything together
+
+
 def test_experiment_preview_properties(test_dir, wlmutils):
     """Test correct preview output properties for Experiment preview"""
     # Prepare entities
