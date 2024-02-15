@@ -68,6 +68,95 @@ def test_experiment_preview(test_dir, wlmutils):
     assert set(["Experiment", "Experiment Path", "Launcher"]).issubset(summary_dict)
 
 
+def test_demo_experiment_preview(test_dir, wlmutils):
+    test_launcher = wlmutils.get_test_launcher()
+    exp_name = "test_experiment_preview"
+    exp = Experiment(exp_name, exp_path=test_dir, launcher=test_launcher)
+    exp.preview()
+
+
+def test_demo_orchestrator_preview(test_dir, wlmutils, choose_host):
+    """Test correct preview output properties for Orchestrator preview"""
+    # Prepare entities
+    test_launcher = wlmutils.get_test_launcher()
+    test_interface = wlmutils.get_test_interface()
+    test_port = wlmutils.get_test_port()
+    exp_name = "test_experiment_preview_properties"
+    exp = Experiment(exp_name, exp_path=test_dir, launcher=test_launcher)
+    # create regular database
+    orc = exp.create_database(
+        port=test_port,
+        interface=test_interface,
+        hosts=choose_host(wlmutils),
+    )
+    # preview_manifest = Manifest(orc)
+    exp.preview(orc)
+
+
+def test_demo_preview_active_infrastructure(wlmutils, test_dir, choose_host):
+    """Test correct preview output properties for active infrastructure preview"""
+    # Prepare entities
+    test_launcher = wlmutils.get_test_launcher()
+    test_interface = wlmutils.get_test_interface()
+    test_port = wlmutils.get_test_port()
+    exp_name = "test_active_infrastructure_preview"
+    exp = Experiment(exp_name, exp_path=test_dir, launcher=test_launcher)
+
+    orc = exp.create_database(
+        port=test_port,
+        interface=test_interface,
+        hosts=choose_host(wlmutils),
+        db_identifier="orc_1",
+    )
+
+    exp.start(orc)
+
+    assert orc.is_active() == True
+
+    orc2 = exp.create_database(
+        port=test_port,
+        interface=test_interface,
+        hosts=choose_host(wlmutils),
+        db_identifier="orc_2",
+    )
+
+    exp.preview(orc, orc2)
+
+    exp.stop(orc)
+
+
+def test_demo_model_preview_properties(test_dir, wlmutils):
+    """
+    Test correct preview output properties for Model preview
+    """
+    # Prepare entities
+    exp_name = "test_model_preview_parameters"
+    test_launcher = wlmutils.get_test_launcher()
+    exp = Experiment(exp_name, exp_path=test_dir, launcher=test_launcher)
+
+    hw_name = "echo-hello"
+    hw_port = 6379
+    hw_password = "unbreakable_password"
+    hw_rs = "multi_tags_template.sh"
+    model_params = {"port": hw_port, "password": hw_password}
+    hw_param1 = "bash"
+    rs1 = RunSettings(hw_param1, hw_rs)
+
+    se_name = "echo-spam"
+    se_param1 = "echo"
+    se_param2 = "spam"
+    se_param3 = "eggs"
+    rs2 = exp.create_run_settings(se_param1, [se_param2, se_param3])
+
+    hello_world_model = exp.create_model(hw_name, run_settings=rs1, params=model_params)
+    spam_eggs_model = exp.create_model(se_name, run_settings=rs2)
+
+    # Execute preview method
+    print(hello_world_model.query_key_prefixing())
+
+    exp.preview(hello_world_model, spam_eggs_model)
+
+
 def test_experiment_preview_properties(test_dir, wlmutils):
     """Test correct preview output properties for Experiment preview"""
     # Prepare entities
