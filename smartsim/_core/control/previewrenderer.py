@@ -74,7 +74,7 @@ def render(
     :type output_format: _OutputFormatString
     """
 
-    verbosity_level = _check_verbosity_level(verbosity_level)
+    verbosity_level = _check_verbosity_level(Verbosity(verbosity_level))
 
     loader = jinja2.PackageLoader("templates")
     env = jinja2.Environment(loader=loader, autoescape=True)
@@ -82,6 +82,7 @@ def render(
     env.filters["as_toggle"] = as_toggle
     env.filters["get_ifname"] = get_ifname
     env.filters["get_dbtype"] = get_dbtype
+    env.globals["Verbosity"] = Verbosity
 
     version = f"_{output_format}"
     tpl_path = f"preview/base{version}.template"
@@ -90,6 +91,13 @@ def render(
 
     tpl = env.get_template(tpl_path)
 
+    if verbosity_level == Verbosity.INFO:
+        logger.warning(
+            "Only showing user set parameters. Some entity fields are "
+            "truncated. To view truncated fields: use verbosity_level "
+            "'developer' or 'debug.'"
+        )
+
     rendered_preview = tpl.render(
         exp_entity=exp,
         active_dbjobs=active_dbjobs,
@@ -97,7 +105,6 @@ def render(
         config=CONFIG,
         verbosity_level=verbosity_level,
     )
-
     return rendered_preview
 
 
@@ -108,13 +115,21 @@ def as_toggle(_eval_ctx: u.F, value: bool) -> str:
 
 @pass_eval_context
 def get_ifname(_eval_ctx: u.F, value: t.List[str]) -> str:
-    return next((item for item in value if "ifname" in item), str).split("=")[-1]
+    if value:
+        for val in value:
+            if "ifname=" in val:
+                output = val.split("=")[-1]
+                return output
+    return ""
 
 
 @pass_eval_context
 def get_dbtype(_eval_ctx: u.F, value: str) -> t.Any:
-    db_type, _ = value.split("/")[-1].split("-", 1)
-    return db_type
+    if value:
+        if "-cli" in value:
+            db_type, _ = value.split("/")[-1].split("-", 1)
+            return db_type
+    return ""
 
 
 def preview_to_file(content: str, filename: str) -> None:
@@ -144,7 +159,7 @@ def find_available_filename(filename: str) -> str:
 
 def _check_output_format(output_format: Format) -> None:
     """
-    Check that the output format given is valid.
+    Check that a valid file output format is given.
     """
     if not output_format == Format.PLAINTEXT:
         raise PreviewFormatError(
@@ -160,7 +175,9 @@ def _check_verbosity_level(
     """
     if not isinstance(verbosity_level, Verbosity):
 
-        logger.warning(f"'{verbosity_level}' is an unsupported verbosity level.\
- Setting verbosity to: {Verbosity.INFO}")
+        logger.warning(
+            f"'{verbosity_level}' is an unsupported verbosity level.\
+ Setting verbosity to: {Verbosity.INFO}"
+        )
         return Verbosity.INFO
     return verbosity_level
