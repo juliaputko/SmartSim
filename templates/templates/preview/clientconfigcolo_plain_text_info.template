@@ -1,5 +1,4 @@
 
-        Client Configuration:
           {%- if model.run_settings.colocated_db_settings.db_identifier %}
           Database Identifier: {{ model.run_settings.colocated_db_settings.db_identifier }}
           {%- endif %}
@@ -13,9 +12,6 @@
           Connection Type: UDS
           Unix Socket: {{ model.run_settings.colocated_db_settings.unix_socket }}
           {%- endif -%}
-          {%- if model.run_settings.colocated_db_settings.unix_socket %}
-          Socket File: {{ model.run_settings.colocated_db_settings.unix_socket }}
-          {%- endif %}
           Type: Colocated
           {%- if model.query_key_prefixing() %}
           Outgoing Key Collision Prevention (Key Prefixing):

@@ -29,11 +29,14 @@
     {% for model in manifest.models %}
     = Model Name: {{ model.name }} =
     {%- include "preview/model_plain_text.template" %}
+      {% if model.run_settings.colocated_db_settings or manifest.dbs %}
+      Client Configuration:
         {%- if model.run_settings.colocated_db_settings %}
-        {% include "preview/clientconfigcolo_plain_text.template" %}
+        {%- include "preview/clientconfigcolo_plain_text.template" %}
         {%- endif %}
         {%- if manifest.dbs %}
         {%- include "preview/clientconfig_plain_text.template" %}
+        {%- endif %}
         {%- endif %}
     {% endfor %}
     {%- endif %}
