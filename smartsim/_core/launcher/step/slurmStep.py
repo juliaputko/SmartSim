@@ -127,6 +127,8 @@ class SrunStep(Step):
         :return: launch command
         :rtype: list[str]
         """
+        # jpnote
+        # print("is this where the model step is going")
         srun = self.run_settings.run_command
         if not srun:
             raise ValueError("No srun command found in PATH")

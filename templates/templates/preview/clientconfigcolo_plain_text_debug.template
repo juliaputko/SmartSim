@@ -24,8 +24,8 @@
               {%- endfor %}
             {%- endif %}
             {%- endif %}
-            Outgoing Key Collision Prevention (Key Prefixing):
-              Tensors: {{ model.query_key_prefixing() | as_toggle }}
-              Datasets: {{ model.query_key_prefixing() | as_toggle }}
-              ML Models/Torch Scripts: {{ False | as_toggle }}
-              Aggregation Lists: {{ model.query_key_prefixing() | as_toggle }}
+          Outgoing Key Collision Prevention (Key Prefixing):
+            Tensors: {{ model.query_key_prefixing() | as_toggle }}
+            Datasets: {{ model.query_key_prefixing() | as_toggle }}
+            ML Models/Torch Scripts: {{ False | as_toggle }}
+            Aggregation Lists: {{ model.query_key_prefixing() | as_toggle }}

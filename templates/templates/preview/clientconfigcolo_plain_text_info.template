@@ -11,7 +11,7 @@
           {%- if model.run_settings.colocated_db_settings.unix_socket %}
           Connection Type: UDS
           Unix Socket: {{ model.run_settings.colocated_db_settings.unix_socket }}
-          {%- endif -%}
+          {%- endif %}
           Type: Colocated
           {%- if model.query_key_prefixing() %}
           Outgoing Key Collision Prevention (Key Prefixing):

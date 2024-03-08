@@ -21,13 +21,13 @@
         {%- for key, value in model.batch_settings.batch_args.items() %}
           {{ key }}: {{ value }}
         {%- endfor %}
-        {%- endif -%}
+        {%- endif %}
         {%- if model.params %}
         Model Parameters:
         {%- for param, value in model.params.items() %}
           {{ param }}: {{ value }}
-        {%- endfor -%}
-        {% endif %}
+        {%- endfor %}
+        {%- endif %}
         {%- if model.files %}
         {%- if model.files.tagged %}
         Tagged Files for Model Configuration:
@@ -35,7 +35,7 @@
           {{ tagged }}
           -> {{ model.path }}
         {%- endfor %}
-        {%- endif -%}
+        {%- endif %}
         {%- if model.files.copy %}
         Copy Files:
         {%- for copy in model.files.copy %}
@@ -64,7 +64,7 @@
           {%- if model.run_settings.colocated_db_settings.unix_socket %}
           Connection Type: UDS
           Unix Socket: {{ model.run_settings.colocated_db_settings.unix_socket }}
-          {%- endif -%}
+          {%- endif %}
           {%- if model.run_settings.colocated_db_settings.ifname %}
           Network Interface Name: {{ model.run_settings.colocated_db_settings.ifname[0] }}
           {%- endif %}

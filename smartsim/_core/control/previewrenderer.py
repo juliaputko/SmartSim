@@ -61,6 +61,8 @@ def render(
     verbosity_level: Verbosity = Verbosity.INFO,
     output_format: Format = Format.PLAINTEXT,
     active_dbjobs: t.Optional[t.Dict[str, Job]] = None,
+    launch_cmd: t.Optional[t.Any] = None,
+    script: t.Optional[t.Any] = None,
 ) -> str:
     """
     Render the template from the supplied entities.
@@ -104,7 +106,10 @@ def render(
         manifest=manifest,
         config=CONFIG,
         verbosity_level=verbosity_level,
+        launch_cmd=launch_cmd,
+        script=script,
     )
+    print(rendered_preview)
     return rendered_preview
 
 

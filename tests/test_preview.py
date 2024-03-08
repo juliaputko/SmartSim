@@ -35,10 +35,11 @@ from jinja2.filters import FILTERS
 
 import smartsim._core._cli.utils as _utils
 from smartsim import Experiment
+from smartsim.database import Orchestrator
 from smartsim._core import Manifest, previewrenderer
 from smartsim._core.config import CONFIG
 from smartsim.error.errors import PreviewFormatError
-from smartsim.settings import QsubBatchSettings, RunSettings
+from smartsim.settings import RunSettings, QsubBatchSettings
 
 on_wlm = (pytest.test_launcher in pytest.wlm_options,)
 
@@ -1472,3 +1473,92 @@ def test_get_dbtype_filter():
     test_string = "SmartSim/smartsim/_core/bin/-cli"
     output = Template(template_str).render(config=test_string)
     assert output == ""
+
+
+def test_preview_job_step(test_dir, wlmutils, choose_host):
+    """Test correct preview output properties for Orchestrator preview"""
+    # Prepare entities
+    test_launcher = wlmutils.get_test_launcher()
+    test_interface = wlmutils.get_test_interface()
+    test_port = wlmutils.get_test_port()
+    exp_name = "test_orchestrator_preview_properties"
+    exp = Experiment(exp_name, exp_path=test_dir, launcher=test_launcher)
+    # create regular database
+    orc = exp.create_database(
+        port=test_port,
+        interface=test_interface,
+        hosts=choose_host(wlmutils),
+    )
+
+    model_params = {"port": 6379, "password": "unbreakable_password"}
+    rs1 = RunSettings("bash", "multi_tags_template.sh")
+    rs2 = exp.create_run_settings("echo", ["spam", "eggs"])
+
+    hello_world_model = exp.create_model(
+        "echo-hello", run_settings=rs1, params=model_params
+    )
+
+    spam_eggs_model = exp.create_model("echo-spam", run_settings=rs2)
+
+    # setup ensemble parameter space
+    learning_rate = list(np.linspace(0.01, 0.5))
+    train_params = {"LR": learning_rate}
+
+    # define how each member should run
+    run = exp.create_run_settings(exe="python", exe_args="./train-model.py")
+
+    ensemble = exp.create_ensemble(
+        "Training-Ensemble",
+        params=train_params,
+        params_as_args=["LR"],
+        run_settings=run,
+        perm_strategy="random",
+        n_models=4,
+    )
+
+    exp.preview(
+        orc, spam_eggs_model, hello_world_model, ensemble, verbosity_level="developer"
+    )
+
+
+def add_batch_resources(wlmutils, batch_settings):
+    if isinstance(batch_settings, QsubBatchSettings):
+        for key, value in wlmutils.get_batch_resources().items():
+            batch_settings.set_resource(key, value)
+
+
+@pytest.mark.skipif(
+    pytest.test_launcher not in pytest.wlm_options,
+    reason="Not testing WLM integrations",
+)
+def test_preview_batch_launch_command(fileutils, test_dir, wlmutils):
+    """Test the preview of a model with batch settings"""
+
+    test_launcher = wlmutils.get_test_launcher()
+    test_interface = wlmutils.get_test_interface()
+    test_port = wlmutils.get_test_port()
+    exp_name = "test-batch-entities"
+    exp = Experiment(exp_name, launcher=wlmutils.get_test_launcher(), exp_path=test_dir)
+
+    script = fileutils.get_test_conf_path("sleep.py")
+    batch_settings = exp.create_batch_settings(nodes=1, time="00:01:00")
+
+    batch_settings.set_account(wlmutils.get_test_account())
+    add_batch_resources(wlmutils, batch_settings)
+    run_settings = wlmutils.get_run_settings("python", f"{script} --time=5")
+    model = exp.create_model(
+        "model", path=test_dir, run_settings=run_settings, batch_settings=batch_settings
+    )
+    model.set_path(test_dir)
+
+    orc = Orchestrator(
+        wlmutils.get_test_port(),
+        db_nodes=3,
+        batch=True,
+        interface="lo",
+        launcher="slurm",
+        run_command="srun",
+    )
+    orc.set_batch_arg("account", "ACCOUNT")
+
+    exp.preview(orc, verbosity_level="developer")

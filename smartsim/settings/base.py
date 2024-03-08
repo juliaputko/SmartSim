@@ -33,11 +33,125 @@ from .._core.utils.helpers import expand_exe_path, fmt_dict, is_valid_cmd
 from ..entity.dbobject import DBModel, DBScript
 from ..log import get_logger
 
+# from ..entity import SmartSimEntity
+# from .._core.launcher.step import Step, LocalStep
+import pathlib
+import shutil
+import os
+
+import os.path as osp
+
+from smartsim.settings.containers import Singularity
+
+# from smartsim.settings.base import RunSettings
+
+
+# from .._core.launcher.step import Step
+# from ..error import AllocationError, LauncherError, SSUnsupportedError
+
 logger = get_logger(__name__)
+
+
+###
+
+
+import functools
+
+
+import sys
+from ..error.errors import UnproxyableStepError
+from .._core.utils.helpers import encode_cmd, get_base_36_repr
+from .._core.config import CONFIG
+import time
+
+# from .._core.launcher.step import Step
+
+
+_RunSettingsT = t.TypeVar("_RunSettingsT", bound="RunSettings")
+
+
+## are we still going to be created a step?
+## and then from there
+
+
+# still make the step?
+def proxyable_launch_cmd_jp(
+    fn: t.Callable[[_RunSettingsT], t.List[str]],
+) -> t.Callable[[_RunSettingsT], t.List[str]]:
+    @functools.wraps(fn)
+    # def _get_launch_cmd_jp(self: _RunSettingsT, name, path) -> t.List[str]:
+    def _get_launch_cmd_jp(self: _RunSettingsT, name, path) -> t.List[str]:
+
+        ## self is only _run settings...
+        # print("coming in here?")
+        # jpnote
+
+        # print("the stuff I passed in")
+        # print(name)
+        # print(self.entity_name)
+        name = self._create_unique_name(name)
+
+        # print(self.entity_cwd)
+
+        # local launch for now:
+        managed = False
+        original_cmd_list = fn(self)
+
+        if not CONFIG.telemetry_enabled:
+            return original_cmd_list
+
+        # managed --> wlm that takes care
+        # unmanaged --> we are executed them as prcoesses (local launcher)
+        # ... need to change where managed is being passed ...
+        if managed:
+            raise UnproxyableStepError(
+                f"Attempting to proxy managed step of type {type(self)}"
+                "through the unmanaged step proxy entry point"
+            )
+
+        proxy_module = "smartsim._core.entrypoints.indirect"
+        # run_settings = RunSettings()
+        # print(self.meta)
+        # print(type(self.meta))
+        etype = self.meta["entity_type"]
+        status_dir = self.meta["status_dir"]
+        # print("before the encoding")
+        # print(original_cmd_list)
+        encoded_cmd = encode_cmd(original_cmd_list)
+        # print("after")
+        # print(encoded_cmd)
+        # jpnote
+
+        # print("should be encocoded", self.entity_name)
+
+        # NOTE: this is NOT safe. should either 1) sign cmd and verify OR 2)
+        #       serialize step and let the indirect entrypoint rebuild the
+        #       cmd... for now, test away...
+        return [
+            sys.executable,
+            "-m",
+            proxy_module,
+            "+name",
+            name,
+            "+command",
+            encoded_cmd,
+            "+entity_type",
+            etype,
+            "+telemetry_dir",
+            status_dir,
+            "+working_dir",
+            path,
+        ]
+
+    # print("the launch command")
+    # print(_get_launch_cmd_jp)
+    return _get_launch_cmd_jp
+
 
 # fmt: off
 class SettingsBase:
     ...
+
 # fmt: on
 
 
@@ -53,6 +167,7 @@ class RunSettings(SettingsBase):
         run_args: t.Optional[t.Dict[str, t.Union[int, str, float, None]]] = None,
         env_vars: t.Optional[t.Dict[str, t.Optional[str]]] = None,
         container: t.Optional[Container] = None,
+        meta: t.Dict[str, str] = None,
         **_kwargs: t.Any,
     ) -> None:
         """Run parameters for a ``Model``
@@ -114,6 +229,113 @@ class RunSettings(SettingsBase):
                 ],
             ]
         ] = None
+
+        # super().__init__(meta=meta)
+
+        self.meta = meta or {}
+
+    # def jpmeta(self) -> t.Dict[str, str]:
+    #     return self.get_meta
+
+    # creating the job step here
+    def _create_job_step_rs(self, entity):  # ?
+        """Create job steps for all entities with the launcher
+
+        :param entity: an entity to create a step for
+        :type entity: SmartSimEntity
+        :param telemetry_dir: Path to a directory in which the job step
+                               may write telemetry events
+        :type telemetry_dir: pathlib.Path
+        :return: the job step
+        :rtype: Step
+        """
+        # if isinstance(entity, Model):
+        #    self._prep_entity_client_env(entity)
+
+        # step = self._launcher.create_step(entity.name, entity.path, entity.run_settings)
+        # instead of this command .. and making it off of the run settings ..
+        # call get_launch_cmd in local step
+        step = self.get_launch_cmd_jp(entity.name, entity.path)
+        # print(self.meta)
+        # self.meta["entity_type"] = str(type(entity).__name__).lower()
+        # self.meta["status_dir"] = str(telemetry_dir / entity.name)
+        # print("\n==============")
+        # print(entity.name)
+        # print(step)
+        # print("==============")
+        # jpnote
+        return step
+
+        # print(entity.name)
+        # print(entity.path)
+
+    # self.get_launch_cmd(entity.name, entity.path)
+
+    @proxyable_launch_cmd_jp
+    def get_launch_cmd_jp(self) -> t.List[str]:
+        cmd = []
+
+        # Add run command and args if user specified
+        # default is no run command for local job steps
+        if self.run_command:
+            cmd.append(self.run_command)
+            run_args = self.format_run_args()
+            cmd.extend(run_args)
+
+        if self.colocated_db_settings:
+            # Replace the command with the entrypoint wrapper script
+            if not (bash := shutil.which("bash")):
+                raise RuntimeError("Unable to locate bash interpreter")
+
+            launch_script_path = self.get_colocated_launch_script()
+            cmd.extend([bash, launch_script_path])
+
+        container = self.container
+        if container and isinstance(container, Singularity):
+            # pylint: disable-next=protected-access
+            cmd += container._container_cmds(self.cwd)
+
+        # build executable
+        cmd.extend(self.exe)
+
+        if self.exe_args:
+            cmd.extend(self.exe_args)
+        # print("the cmd:", cmd)
+        return cmd
+
+        ## get the output and err files ??
+
+    def get_output_files(self, name, path) -> t.Tuple[str, str]:
+        """Return two paths to error and output files based on cwd"""
+        output = self.get_step_file(name, path, ending=".out")
+        error = self.get_step_file(name, path, ending=".err")
+        return output, error
+
+    def get_step_file(
+        self,
+        name,
+        path,
+        ending: str = ".sh",
+        script_name: t.Optional[str] = None,
+    ) -> str:
+        """Get the name for a file/script created by the step class
+
+        Used for Batch scripts, mpmd scripts, etc.
+        """
+        # print(path)
+        # print(name)
+        # jpnote
+        if script_name:
+            script_name = script_name if "." in script_name else script_name + ending
+            return osp.join(path, script_name)
+        return osp.join(path, name + ending)
+
+    def _set_env(self) -> t.Dict[str, str]:
+        env = os.environ.copy()
+        if self.env_vars:
+            for k, v in self.env_vars.items():
+                env[k] = v or ""
+        return env
 
     @property
     def exe_args(self) -> t.Union[str, t.List[str]]:
@@ -594,12 +816,19 @@ class RunSettings(SettingsBase):
             string += "\nCo-located Database: True"
         return string
 
+    @staticmethod
+    def _create_unique_name(entity_name: str) -> str:
+        step_name = entity_name + "-" + get_base_36_repr(time.time_ns())
+        # print("\nSTEP NAME? ", step_name)
+        return step_name
+
 
 class BatchSettings(SettingsBase):
     def __init__(
         self,
         batch_cmd: str,
         batch_args: t.Optional[t.Dict[str, t.Optional[str]]] = None,
+        meta: t.Dict[str, str] = (None,),
         **kwargs: t.Any,
     ) -> None:
         self._batch_cmd = batch_cmd
@@ -609,6 +838,8 @@ class BatchSettings(SettingsBase):
         self.set_walltime(kwargs.get("time", None))
         self.set_queue(kwargs.get("queue", None))
         self.set_account(kwargs.get("account", None))
+
+        self.meta = meta or {}
 
     @property
     def batch_cmd(self) -> str:
@@ -633,6 +864,106 @@ class BatchSettings(SettingsBase):
     @batch_args.setter
     def batch_args(self, value: t.Dict[str, t.Optional[str]]) -> None:
         self._batch_args = copy.deepcopy(value) if value else {}
+
+    # how do I get it to call the write_script stuff in the batch settings?
+
+    # #####
+    # ..  need to add all the steps BEFORE moving into the controller? -- make sure everything in the local
+    # run settings are
+    # job step creation on the run command
+
+    def _create_batch_job_step_rs(self, entity):
+        # jpnote
+        # print("IN BASE")
+        # print(entity.name)
+        # print(entity.path)
+
+        self.meta["entity_type"] = str(type(entity).__name__).lower()
+        # self.batch_settings.meta["status_dir"] = str(telemetry_dir / entity.name)
+
+    # print("\n The batch launch cmd?")
+    # print(self.get_launch_cmd_batch())
+
+    # # create_step(..pass in batch settings )
+    # # add to batch stuff
+
+    # # change to batch cmd ...
+    # #  @proxyable_launch_cmd_jp
+    # def launch_cmd_batch(self) -> t.List[str]:
+    #     cmd = []
+
+    #     # Add run command and args if user specified
+    #     # default is no run command for local job steps
+    #     if self._batch_cmd:
+    #         cmd.append(self._batch_cmd)
+    #         run_args = self.format_batch_args()
+    #         cmd.extend(run_args)
+
+    #     # if self.colocated_db_settings:
+    #     #     # Replace the command with the entrypoint wrapper script
+    #     #     if not (bash := shutil.which("bash")):
+    #     #         raise RuntimeError("Unable to locate bash interpreter")
+
+    #     #     launch_script_path = self.get_colocated_launch_script()
+    #     #     cmd.extend([bash, launch_script_path])
+
+    #     # container = self.container
+    #     # if container and isinstance(container, Singularity):
+    #     #     # pylint: disable-next=protected-access
+    #     #     cmd += container._container_cmds(self.cwd)
+
+    #     # build executable
+    #     cmd.extend(self.exe)
+    #     if self.exe_args:
+    #         cmd.extend(self.exe_args)
+    #     return cmd
+
+    #####
+    # launcher.py
+    #     every launcher utilizing this interface must have a map
+    #  of supported RunSettings types (see slurmLauncher.py for ex)
+    #    def create_step(
+
+    ### do I need to know this stuff to create the launch cmd?  ###
+    #         # RunSettings types supported by this launcher
+
+    # @property
+    # def supported_rs(self) -> t.Dict[t.Type[SettingsBase], t.Type[Step]]:
+    #     # RunSettings types supported by this launcher
+    #     return {
+    #         SrunSettings: SrunStep,
+    #         SbatchSettings: SbatchStep,
+    #         MpirunSettings: MpirunStep,
+    #         MpiexecSettings: MpiexecStep,
+    #         OrterunSettings: OrterunStep,
+    #         RunSettings: LocalStep,
+    #     }
+
+    # def get_step_file(
+    #     self,
+    #     name,
+    #     path,
+    #     ending: str = ".sh",
+    #     script_name: t.Optional[str] = None,
+    # ) -> str:
+    #     """Get the name for a file/script created by the step class
+
+    #     Used for Batch scripts, mpmd scripts, etc.
+    #     """
+    #     print(path)
+    #     print(name)
+    #     if script_name:
+    #         script_name = script_name if "." in script_name else script_name + ending
+    #         return osp.join(path, script_name)
+    #     return osp.join(path, name + ending)
+
+    #     ## get the output and err files ??
+
+    # def get_output_files(self, name, path) -> t.Tuple[str, str]:
+    #     """Return two paths to error and output files based on cwd"""
+    #     output = self.get_step_file(name, path, ending=".out")
+    #     error = self.get_step_file(name, path, ending=".err")
+    #     return output, error
 
     def set_nodes(self, num_nodes: int) -> None:
         raise NotImplementedError

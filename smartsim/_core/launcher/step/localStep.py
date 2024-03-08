@@ -46,7 +46,8 @@ class LocalStep(Step):
     @proxyable_launch_cmd
     def get_launch_cmd(self) -> t.List[str]:
         cmd = []
-
+        # jpnote
+        # print("is this where model steps is going?")
         # Add run command and args if user specified
         # default is no run command for local job steps
         if self.run_settings.run_command:

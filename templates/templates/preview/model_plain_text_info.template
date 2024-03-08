@@ -1,13 +1,13 @@
 
 
-        {%- if model.batch_settings -%}
+        {%- if model.batch_settings %}
         Batch Launch: True
         {% endif %}
         {%- if model.params %}
         Model Parameters:
         {%- for param, value in model.params.items() %}
           {{ param }}: {{ value }}
-        {%- endfor -%}
+        {%- endfor %}
         {%- endif %}
 
         {%- if model.run_settings.colocated_db_settings %}
@@ -23,7 +23,7 @@
           {%- if model.run_settings.colocated_db_settings.unix_socket %}
           Connection Type: UDS
           Unix Socket: {{ model.run_settings.colocated_db_settings.unix_socket }}
-        {%- endif -%}
+        {%- endif %}
         {%- endif %}
 
         {%- if model.run_settings.colocated_db_settings['db_scripts'] %}

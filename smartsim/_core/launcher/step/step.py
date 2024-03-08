@@ -58,12 +58,17 @@ class Step:
         """Overridable, read only property for step to specify its environment"""
         return None
 
+    # jpnote
+    ## this would be on the run settings
+    ## step_setting.get_launch_cmd?]
+    # step_settings.get_launch_cmd
     def get_launch_cmd(self) -> t.List[str]:
         raise NotImplementedError
 
     @staticmethod
     def _create_unique_name(entity_name: str) -> str:
         step_name = entity_name + "-" + get_base_36_repr(time.time_ns())
+        # print("\nSTEP NAME? ", step_name)  # jpnote
         return step_name
 
     def get_output_files(self) -> t.Tuple[str, str]:
@@ -142,6 +147,10 @@ def proxyable_launch_cmd(
         etype = self.meta["entity_type"]
         status_dir = self.meta["status_dir"]
         encoded_cmd = encode_cmd(original_cmd_list)
+        # jpnote
+        # print("in step.py")
+        # print("\nNAME:", self.name)
+        # print("\nCWD:", self.cwd)
 
         # NOTE: this is NOT safe. should either 1) sign cmd and verify OR 2)
         #       serialize step and let the indirect entrypoint rebuild the

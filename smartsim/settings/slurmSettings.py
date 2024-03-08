@@ -29,6 +29,7 @@ from __future__ import annotations
 import datetime
 import os
 import typing as t
+import os.path as osp
 
 from ..error import SSUnsupportedError
 from ..log import get_logger
@@ -45,6 +46,7 @@ class SrunSettings(RunSettings):
         run_args: t.Optional[t.Dict[str, t.Union[int, str, float, None]]] = None,
         env_vars: t.Optional[t.Dict[str, t.Optional[str]]] = None,
         alloc: t.Optional[str] = None,
+        meta: t.Dict[str, str] = None,
         **kwargs: t.Any,
     ) -> None:
         """Initialize run parameters for a slurm job with ``srun``
@@ -75,6 +77,7 @@ class SrunSettings(RunSettings):
         )
         self.alloc = alloc
         self.mpmd: t.List[RunSettings] = []
+        self.meta = meta or {}
 
     reserved_run_args = {"chdir", "D"}
 
@@ -414,6 +417,7 @@ class SbatchSettings(BatchSettings):
         time: str = "",
         account: t.Optional[str] = None,
         batch_args: t.Optional[t.Dict[str, t.Optional[str]]] = None,
+        meta: t.Dict[str, str] = None,
         **kwargs: t.Any,
     ) -> None:
         """Specify run parameters for a Slurm batch job
@@ -444,6 +448,86 @@ class SbatchSettings(BatchSettings):
             time=time,
             **kwargs,
         )
+        self.step_cmds: t.List[t.List[str]] = ([],)
+        self.meta = meta or {}
+
+    def _create_batch_job_step_rs(self, entity):
+
+        # print("in slurm settings:")
+        self.meta["entity_type"] = str(type(entity).__name__).lower()
+        # self.meta["status_dir"] = str(telemetry_dir / entity.name)
+        # jpnotes:: can I just pass in the entity..
+        return self.get_launch_cmd(entity.name, entity.path)
+
+    def get_launch_cmd(self, name, path) -> t.List[str]:
+        """Get the launch command for the batch
+
+        :return: launch command for the batch
+        :rtype: list[str]
+        """
+        script, string_script = self._write_script_jp(name, path)
+        # print(script)
+        # print("\n THE LAUNCH COMMAND")
+        # print([self.batch_cmd, "--parsable", script])
+        # print(type(string_script))
+        # print(string_script)
+        return [self.batch_cmd, "--parsable", script], string_script
+
+    def _write_script_jp(self, name, path) -> str:
+        """Write the batch script
+
+        :return: batch script path after writing
+        :rtype: str
+        """
+        # pass in name and path ...
+        # batch_script = self.get_step_file(ending=".sh", name, path)
+        batch_script = self.get_step_file_jp(name, path, ending=".sh")
+        output, error = self.get_output_files_jp(name, path)
+        with open(batch_script, "w", encoding="utf-8") as script_file:
+            script_file.write("#!/bin/bash\n\n")
+            script_file.write(f"#SBATCH --output={output}\n")
+            script_file.write(f"#SBATCH --error={error}\n")
+            script_file.write(f"#SBATCH --job-name={name}\n")
+
+            # add additional sbatch options
+            for opt in self.format_batch_args():
+                script_file.write(f"#SBATCH {opt}\n")
+
+            for cmd in self.preamble:
+                script_file.write(f"{cmd}\n")
+
+            ## jpnote: might need to carry over step_cmds
+            for i, step_cmd in enumerate(self.step_cmds):
+                script_file.write("\n")
+                script_file.write(f"{' '.join((step_cmd))} &\n")
+                if i == len(self.step_cmds) - 1:
+                    script_file.write("\n")
+                    script_file.write("wait\n")
+        # print("\n the contents of the batch script")
+        with open(batch_script, "r") as f:
+            batch_script_read = f.read()
+        # print(batch_script_read)
+        # print(type(batch_script_read))
+
+        return batch_script, batch_script_read
+
+    def get_output_files_jp(self, name, path) -> t.Tuple[str, str]:
+        """Return two paths to error and output files based on cwd"""
+        output = self.get_step_file_jp(name, path, ending=".out")
+        error = self.get_step_file_jp(name, path, ending=".err")
+        return output, error
+
+    def get_step_file_jp(
+        self, name, path, ending: str = ".sh", script_name: t.Optional[str] = None
+    ) -> str:
+        """Get the name for a file/script created by the step class
+
+        Used for Batch scripts, mpmd scripts, etc.
+        """
+        if script_name:
+            script_name = script_name if "." in script_name else script_name + ending
+            return osp.join(path, script_name)
+        return osp.join(path, name + ending)
 
     def set_walltime(self, walltime: str) -> None:
         """Set the walltime of the job

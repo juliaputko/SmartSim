@@ -465,6 +465,9 @@ class Controller:
                 (self._create_job_step(db, orc_telem_dir / orchestrator.name), db)
                 for db in orchestrator.entities
             ]
+            # print("in launch orchestrator")
+            # print(orchestrator.name)
+
             manifest_builder.add_database(
                 orchestrator, [(step.name, step) for step, _ in db_steps]
             )
@@ -588,6 +591,15 @@ class Controller:
         batch_step.meta["entity_type"] = str(type(entity_list).__name__).lower()
         batch_step.meta["status_dir"] = str(telemetry_dir / entity_list.name)
 
+        ### add it to the run settingsss.
+
+        entity_list.batch_settings.meta["entity_type"] = str(
+            type(entity_list).__name__
+        ).lower()
+        entity_list.batch_settings.meta["status_dir"] = str(
+            telemetry_dir / entity_list.name
+        )
+
         substeps = []
         for entity in entity_list.entities:
             # tells step creation not to look for an allocation
@@ -616,8 +628,16 @@ class Controller:
 
         step = self._launcher.create_step(entity.name, entity.path, entity.run_settings)
 
+        # print("\nin the controller")
+        # print("\nname: ", entity.name)
+        # print("\ncwd: ", entity.path)
+
         step.meta["entity_type"] = str(type(entity).__name__).lower()
         step.meta["status_dir"] = str(telemetry_dir / entity.name)
+        # add this dictionary to the run_settings
+        # --> changing it to this...
+        entity.run_settings.meta["entity_type"] = str(type(entity).__name__).lower()
+        entity.run_settings.meta["status_dir"] = str(telemetry_dir / entity.name)
 
         return step
 

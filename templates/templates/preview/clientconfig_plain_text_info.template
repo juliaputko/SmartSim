@@ -1,8 +1,8 @@
 
-          {%- for db in manifest.dbs %}
+        {%- for db in manifest.dbs %}
           {%- if db.name %}
           Database Identifier: {{ db.name }}
-        {%- endif %}
+          {%- endif %}
             Database Backend: {{ config.database_cli | get_dbtype }}
             TCP/IP Port(s):
             {%- for port in db.ports %}
@@ -13,11 +13,11 @@
             {%- else %}
             Type: Standalone
             {%- endif %}
-        {%- endfor %}
+            {%- endfor %}
           {%- if model.query_key_prefixing() %}
           Outgoing Key Collision Prevention (Key Prefixing):
             Tensors: {{ model.query_key_prefixing() | as_toggle }}
             Datasets: {{ model.query_key_prefixing() | as_toggle }}
             ML Models/Torch Scripts: {{ False | as_toggle }}
             Aggregation Lists: {{ model.query_key_prefixing() | as_toggle }}
-        {%- endif %}
+          {%- endif %}

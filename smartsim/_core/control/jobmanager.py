@@ -335,7 +335,6 @@ class JobManager:
         :param orchestrator: orchestrator instance
         :type orchestrator: Orchestrator
         """
-        # should only be called during launch in the controller
 
         with self._lock:
             if orchestrator.batch:

@@ -15,8 +15,8 @@
             Type: Standalone
             {%- endif %}
             {%- endif %}
-            {% endfor %}
-            {%- if model.incoming_entities %}
+            {%- endfor %}
+          {%- if model.incoming_entities %}
           {%- if verbosity_level == Verbosity.DEBUG or verbosity_level == Verbosity.DEVELOPER %}
           Incoming Entities (Available Data Sources):
             {%- for incoming in model.incoming_entities %}
@@ -30,4 +30,4 @@
             Datasets: {{ model.query_key_prefixing() | as_toggle }}
             ML Models/Torch Scripts: {{ False | as_toggle }}
             Aggregation Lists: {{ model.query_key_prefixing() | as_toggle }}
-            {%- endif %}
+          {%- endif %}

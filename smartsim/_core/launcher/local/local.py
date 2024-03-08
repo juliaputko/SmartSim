@@ -46,11 +46,15 @@ class LocalLauncher(Launcher):
 
         :return: Step object
         """
+        ## how to create a job step for an entity launching NOT locally
         if not isinstance(step_settings, RunSettings):
             raise TypeError(
                 "Local Launcher only supports entities with RunSettings, "
                 f"not {type(step_settings)}"
             )
+        # print("in local.py")
+        # print("\nNAME:", name)
+        # print("\nCWD:", cwd)
         return LocalStep(name, cwd, step_settings)
 
     def get_step_update(
