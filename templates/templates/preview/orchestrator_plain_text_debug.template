@@ -15,7 +15,7 @@
         {%- for key, value in db.run_settings.run_args.items() %}
           {{ key }}: {{ value }}
         {%- endfor %}
-        {% endif %}
+        {%- endif %}
         {%- endif %}
         {%- if db.run_command %}
         Run Command: {{ db.run_command }}
@@ -29,23 +29,26 @@
         {%- endfor %}
         {%- endif %}
 
-        {%- if db.batch == True %}
-        {% if verbosity_level == Verbosity.DEVELOPER %}
-      Launch Command:
-        {%- set cmd, script = db.batch_settings._create_batch_job_step_rs(db) %}
-        {%- for i in cmd %}
-          {{ i|indent(8) }}
-        {%- endfor %}
+      {%- if db.batch == True %}
+      {%- if verbosity_level == Verbosity.DEVELOPER %}
 
-        {{ script|indent(8) }}
-        {% endif %}
-        {%- else %}
-        {% if verbosity_level == Verbosity.DEVELOPER %}
+      Launch Command:
+      {%- set launch, script = db.batch_settings.get_batch_launch_cmd %}
+      {%- for i in launch %}
+        {{ i|indent(8)|trim }}
+      {%- endfor %}
+
+        {{ script|indent(8)|safe }}
+
+      {%- endif %}
+
+      {%- else %}
+      {%- if verbosity_level == Verbosity.DEVELOPER %}
+
       Launch command:
-        {%- for orc in db.entities %}
-        {%- for item in orc.run_settings._create_job_step_rs(db) %}
-            {{ item|wordwrap(85) }}
-        {%- endfor %}
-        {% endfor %}
+{%- for orc in db.entities %}
+        {{ orc.run_settings.get_launch_cmd | launch_cmd_formatter | wordwrap(150) | replace('\n', '\n         ') }}
+{%- endfor %}
+
         {%- endif %}
-        {%- endif %}
+      {%- endif %}

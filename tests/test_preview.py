@@ -433,7 +433,7 @@ def test_preview_active_infrastructure_orchestrator_error(
         exp, preview_manifest, active_dbjobs=active_dbjobs, verbosity_level="debug"
     )
 
-    assert "WARNING: Cannot preview a started entity" in output
+    assert "WARNING: Cannot preview orc_1, because it is already started" in output
 
     exp.stop(orc)
 
@@ -901,15 +901,16 @@ def test_preview_colocated_db_model_ensemble(fileutils, test_dir, wlmutils, mlut
     exp.generate(colo_ensemble)
 
     preview_manifest = Manifest(colo_ensemble)
+    exp.create_launch_command(preview_manifest)
 
     # Execute preview method
-    output = previewrenderer.render(exp, preview_manifest, verbosity_level="debug")
+    output = previewrenderer.render(exp, preview_manifest, verbosity_level="developer")
 
     # Evaluate output
     assert "Models" in output
-    assert "Model Name" in output
+    assert "Name" in output
     assert "Backend" in output
-    assert "Model Path" in output
+    assert "Path" in output
     assert "Device" in output
     assert "Devices Per Node" in output
     assert "Inputs" in output
@@ -917,7 +918,7 @@ def test_preview_colocated_db_model_ensemble(fileutils, test_dir, wlmutils, mlut
 
     assert model_name in output
     assert model_backend in output
-    assert "Model Path" in output
+    assert "Path" in output
     assert "/model1.pt" in output
     assert "CPU" in output
     assert model_inputs in output
@@ -1014,14 +1015,15 @@ def test_preview_colocated_db_script_ensemble(fileutils, test_dir, wlmutils, mlu
     exp.generate(colo_ensemble)
 
     preview_manifest = Manifest(colo_ensemble)
+    exp.create_launch_command(preview_manifest)
 
     # Execute preview method
-    output = previewrenderer.render(exp, preview_manifest, verbosity_level="debug")
+    output = previewrenderer.render(exp, preview_manifest, verbosity_level="developer")
 
     # Evaluate output
-    assert "Scripts" in output
-    assert "Script Name" in output
-    assert "Script Path" in output
+    assert "Torch Scripts" in output
+    assert "Name" in output
+    assert "Path" in output
     assert "Devices Per Node" in output
 
     assert cm_name2 in output
@@ -1263,9 +1265,10 @@ def test_preview_wlm_run_commands_cluster_orc_model(
     )
 
     preview_manifest = Manifest(orc, smartsim_model)
+    exp.create_launch_command(preview_manifest)
 
     # Execute preview method
-    output = previewrenderer.render(exp, preview_manifest, verbosity_level="debug")
+    output = previewrenderer.render(exp, preview_manifest, verbosity_level="developer")
 
     # Evaluate output
     assert "Run Command" in output
@@ -1292,15 +1295,17 @@ def test_preview_model_on_wlm(fileutils, test_dir, wlmutils):
     M2 = exp.create_model("m2", path=test_dir, run_settings=settings2)
 
     preview_manifest = Manifest(M1, M2)
+    exp.create_launch_command(preview_manifest)
 
     # Execute preview method
-    output = previewrenderer.render(exp, preview_manifest, verbosity_level="debug")
+    output = previewrenderer.render(exp, preview_manifest, verbosity_level="developer")
 
     assert "Run Command" in output
     assert "Run Arguments" in output
     assert "nodes" in output
     assert "ntasks" in output
     assert "time" in output
+    assert "Launch Command" in output
 
 
 @pytest.mark.skipif(
@@ -1325,15 +1330,17 @@ def test_preview_batch_model(fileutils, test_dir, wlmutils):
     model.set_path(test_dir)
 
     preview_manifest = Manifest(model)
+    exp.create_launch_command(preview_manifest)
 
     # Execute preview method
-    output = previewrenderer.render(exp, preview_manifest, verbosity_level="debug")
+    output = previewrenderer.render(exp, preview_manifest, verbosity_level="developer")
 
     assert "Batch Launch: True" in output
     assert "Batch Command" in output
     assert "Batch Arguments" in output
     assert "nodes" in output
     assert "time" in output
+    assert "Launch Command" in output
 
 
 @pytest.mark.skipif(
@@ -1361,9 +1368,10 @@ def test_preview_batch_ensemble(fileutils, test_dir, wlmutils):
     ensemble.set_path(test_dir)
 
     preview_manifest = Manifest(ensemble)
+    exp.create_launch_command(preview_manifest)
 
     # Execute preview method
-    output = previewrenderer.render(exp, preview_manifest, verbosity_level="debug")
+    output = previewrenderer.render(exp, preview_manifest, verbosity_level="developer")
 
     assert "Batch Launch: True" in output
     assert "Batch Command" in output
@@ -1387,6 +1395,212 @@ def test_output_format_error():
         "The only valid output format currently available is plain_text"
         in ex.value.args[0]
     )
+
+
+def test_preview_launch_command(test_dir, wlmutils, choose_host):
+    """Test preview launch command for orchestrator, models, and
+    ensembles"""
+    # Prepare entities
+    test_launcher = wlmutils.get_test_launcher()
+    test_interface = wlmutils.get_test_interface()
+    test_port = wlmutils.get_test_port()
+    exp_name = "test_preview_launch_command"
+    exp = Experiment(exp_name, exp_path=test_dir, launcher=test_launcher)
+    # create regular database
+    orc = exp.create_database(
+        port=test_port,
+        interface=test_interface,
+        hosts=choose_host(wlmutils),
+    )
+
+    model_params = {"port": 6379, "password": "unbreakable_password"}
+    rs1 = RunSettings("bash", "multi_tags_template.sh")
+    rs2 = exp.create_run_settings("echo", ["spam", "eggs"])
+
+    hello_world_model = exp.create_model(
+        "echo-hello", run_settings=rs1, params=model_params
+    )
+
+    spam_eggs_model = exp.create_model("echo-spam", run_settings=rs2)
+
+    # setup ensemble parameter space
+    learning_rate = list(np.linspace(0.01, 0.5))
+    train_params = {"LR": learning_rate}
+
+    # define how each member should run
+    run = exp.create_run_settings(exe="python", exe_args="./train-model.py")
+
+    ensemble = exp.create_ensemble(
+        "Training-Ensemble",
+        params=train_params,
+        params_as_args=["LR"],
+        run_settings=run,
+        perm_strategy="random",
+        n_models=4,
+    )
+
+    preview_manifest = Manifest(orc, spam_eggs_model, hello_world_model, ensemble)
+    exp.create_launch_command(preview_manifest)
+
+    # Execute preview method
+    output = previewrenderer.render(exp, preview_manifest, verbosity_level="developer")
+
+    print(output)
+
+
+def add_batch_resources(wlmutils, batch_settings):
+    if isinstance(batch_settings, QsubBatchSettings):
+        for key, value in wlmutils.get_batch_resources().items():
+            batch_settings.set_resource(key, value)
+
+
+@pytest.mark.skipif(
+    pytest.test_launcher not in pytest.wlm_options,
+    reason="Not testing WLM integrations",
+)
+def test_preview_batch_launch_command(fileutils, test_dir, wlmutils):
+    """Test the preview of a model with batch settings"""
+
+    exp_name = "test-batch-entities"
+    exp = Experiment(exp_name, launcher=wlmutils.get_test_launcher(), exp_path=test_dir)
+
+    script = fileutils.get_test_conf_path("sleep.py")
+    batch_settings = exp.create_batch_settings(nodes=1, time="00:01:00")
+
+    batch_settings.set_account(wlmutils.get_test_account())
+    add_batch_resources(wlmutils, batch_settings)
+    run_settings = wlmutils.get_run_settings("python", f"{script} --time=5")
+    model = exp.create_model(
+        "model", path=test_dir, run_settings=run_settings, batch_settings=batch_settings
+    )
+    model.set_path(test_dir)
+
+    orc = Orchestrator(
+        wlmutils.get_test_port(),
+        db_nodes=3,
+        batch=True,
+        interface="lo",
+        launcher="slurm",
+        run_command="srun",
+    )
+    orc.set_batch_arg("account", "ACCOUNT")
+
+    preview_manifest = Manifest(orc, model)
+    exp.create_launch_command(preview_manifest)
+
+    # Execute preview method
+    output = previewrenderer.render(exp, preview_manifest, verbosity_level="developer")
+
+    assert "Batch Launch: True" in output
+    assert "Batch Command" in output
+    assert "Batch Arguments" in output
+
+
+@pytest.mark.skipif(
+    pytest.test_launcher not in pytest.wlm_options,
+    reason="Not testing WLM integrations",
+)
+def test_ensemble_batch(test_dir, wlmutils):
+    """
+    Test preview of client configuration and key prefixing in Ensemble preview
+    """
+    # Prepare entities
+    test_launcher = wlmutils.get_test_launcher()
+    exp = Experiment(
+        "test-preview-ensemble-clientconfig", exp_path=test_dir, launcher=test_launcher
+    )
+    # Create Orchestrator
+    db = exp.create_database(port=6780, interface="lo")
+    exp.generate(db, overwrite=True)
+    rs1 = exp.create_run_settings("echo", ["hello", "world"])
+    # Create ensemble
+    batch_settings = exp.create_batch_settings(nodes=1, time="00:01:00")
+    batch_settings.set_account(wlmutils.get_test_account())
+    add_batch_resources(wlmutils, batch_settings)
+    ensemble = exp.create_ensemble(
+        "fd_simulation", run_settings=rs1, batch_settings=batch_settings, replicas=2
+    )
+    # enable key prefixing on ensemble
+    ensemble.enable_key_prefixing()
+    exp.generate(ensemble, overwrite=True)
+    rs2 = exp.create_run_settings("echo", ["spam", "eggs"])
+    # Create model
+    ml_model = exp.create_model("tf_training", rs2)
+
+    for sim in ensemble.entities:
+        ml_model.register_incoming_entity(sim)
+
+    exp.generate(ml_model, overwrite=True)
+
+    preview_manifest = Manifest(db, ml_model, ensemble)
+    exp.create_launch_command(preview_manifest)
+
+    # Call preview renderer for testing output
+    output = previewrenderer.render(exp, preview_manifest, verbosity_level="developer")
+
+    # Evaluate output
+    assert "Client Configuration" in output
+    assert "Database Identifier" in output
+    assert "Database Backend" in output
+    assert "Type" in output
+
+
+def test_preview_colocated_db_singular_model(wlmutils, test_dir):
+    """Test preview behavior when a colocated db is only added to
+    one model. The expected behviour is that
+    """
+
+    test_launcher = wlmutils.get_test_launcher()
+
+    exp = Experiment("colocated test", exp_path=test_dir, launcher=test_launcher)
+
+    rs = exp.create_run_settings("sleep", ["100"])
+
+    model_1 = exp.create_model("model_1", run_settings=rs)
+    model_2 = exp.create_model("model_2", run_settings=rs)
+
+    model_1.colocate_db()
+
+    exp.generate(model_1, model_2, overwrite=True)
+
+    preview_manifest = Manifest(model_1, model_2)
+    exp.create_launch_command(preview_manifest)
+
+    # Call preview renderer for testing output
+    output = previewrenderer.render(exp, preview_manifest, verbosity_level="developer")
+
+    assert "model_1" in output
+    assert "model_2" in output
+    assert "Client Configuration" in output
+
+
+def test_get_dbtype_filter():
+    """Test get_dbtype filter to extract database backend from config"""
+
+    template_str = "{{ config | get_dbtype }}"
+    FILTERS["get_dbtype"] = previewrenderer.get_dbtype
+    output = Template(template_str).render(config=CONFIG.database_cli)
+    assert output in CONFIG.database_cli
+    # Test empty input
+    test_string = ""
+    output = Template(template_str).render(config=test_string)
+    assert output == ""
+    # Test empty path
+    test_string = "SmartSim/smartsim/_core/bin/"
+    output = Template(template_str).render(config=test_string)
+    assert output == ""
+    # Test no hyphen
+    test_string = "SmartSim/smartsim/_core/bin/rediscli"
+    output = Template(template_str).render(config=test_string)
+    assert output == ""
+    # Test no LHS
+    test_string = "SmartSim/smartsim/_core/bin/redis-"
+    output = Template(template_str).render(config=test_string)
+    assert output == ""
+    # Test no RHS
+    test_string = "SmartSim/smartsim/_core/bin/-cli"
+    output = Template(template_str).render(config=test_string)
+    assert output == ""
 
 
 def test_get_ifname_filter(wlmutils, test_dir, choose_host):
@@ -1444,121 +1658,3 @@ def test_get_ifname_filter(wlmutils, test_dir, choose_host):
         assert output == ""
 
     exp.stop(orc)
-
-
-def test_get_dbtype_filter():
-    """Test get_dbtype filter to extract database backend from config"""
-
-    template_str = "{{ config | get_dbtype }}"
-    FILTERS["get_dbtype"] = previewrenderer.get_dbtype
-    output = Template(template_str).render(config=CONFIG.database_cli)
-    assert output in CONFIG.database_cli
-    # Test empty input
-    test_string = ""
-    output = Template(template_str).render(config=test_string)
-    assert output == ""
-    # Test empty path
-    test_string = "SmartSim/smartsim/_core/bin/"
-    output = Template(template_str).render(config=test_string)
-    assert output == ""
-    # Test no hyphen
-    test_string = "SmartSim/smartsim/_core/bin/rediscli"
-    output = Template(template_str).render(config=test_string)
-    assert output == ""
-    # Test no LHS
-    test_string = "SmartSim/smartsim/_core/bin/redis-"
-    output = Template(template_str).render(config=test_string)
-    assert output == ""
-    # Test no RHS
-    test_string = "SmartSim/smartsim/_core/bin/-cli"
-    output = Template(template_str).render(config=test_string)
-    assert output == ""
-
-
-def test_preview_job_step(test_dir, wlmutils, choose_host):
-    """Test correct preview output properties for Orchestrator preview"""
-    # Prepare entities
-    test_launcher = wlmutils.get_test_launcher()
-    test_interface = wlmutils.get_test_interface()
-    test_port = wlmutils.get_test_port()
-    exp_name = "test_orchestrator_preview_properties"
-    exp = Experiment(exp_name, exp_path=test_dir, launcher=test_launcher)
-    # create regular database
-    orc = exp.create_database(
-        port=test_port,
-        interface=test_interface,
-        hosts=choose_host(wlmutils),
-    )
-
-    model_params = {"port": 6379, "password": "unbreakable_password"}
-    rs1 = RunSettings("bash", "multi_tags_template.sh")
-    rs2 = exp.create_run_settings("echo", ["spam", "eggs"])
-
-    hello_world_model = exp.create_model(
-        "echo-hello", run_settings=rs1, params=model_params
-    )
-
-    spam_eggs_model = exp.create_model("echo-spam", run_settings=rs2)
-
-    # setup ensemble parameter space
-    learning_rate = list(np.linspace(0.01, 0.5))
-    train_params = {"LR": learning_rate}
-
-    # define how each member should run
-    run = exp.create_run_settings(exe="python", exe_args="./train-model.py")
-
-    ensemble = exp.create_ensemble(
-        "Training-Ensemble",
-        params=train_params,
-        params_as_args=["LR"],
-        run_settings=run,
-        perm_strategy="random",
-        n_models=4,
-    )
-
-    exp.preview(
-        orc, spam_eggs_model, hello_world_model, ensemble, verbosity_level="developer"
-    )
-
-
-def add_batch_resources(wlmutils, batch_settings):
-    if isinstance(batch_settings, QsubBatchSettings):
-        for key, value in wlmutils.get_batch_resources().items():
-            batch_settings.set_resource(key, value)
-
-
-@pytest.mark.skipif(
-    pytest.test_launcher not in pytest.wlm_options,
-    reason="Not testing WLM integrations",
-)
-def test_preview_batch_launch_command(fileutils, test_dir, wlmutils):
-    """Test the preview of a model with batch settings"""
-
-    test_launcher = wlmutils.get_test_launcher()
-    test_interface = wlmutils.get_test_interface()
-    test_port = wlmutils.get_test_port()
-    exp_name = "test-batch-entities"
-    exp = Experiment(exp_name, launcher=wlmutils.get_test_launcher(), exp_path=test_dir)
-
-    script = fileutils.get_test_conf_path("sleep.py")
-    batch_settings = exp.create_batch_settings(nodes=1, time="00:01:00")
-
-    batch_settings.set_account(wlmutils.get_test_account())
-    add_batch_resources(wlmutils, batch_settings)
-    run_settings = wlmutils.get_run_settings("python", f"{script} --time=5")
-    model = exp.create_model(
-        "model", path=test_dir, run_settings=run_settings, batch_settings=batch_settings
-    )
-    model.set_path(test_dir)
-
-    orc = Orchestrator(
-        wlmutils.get_test_port(),
-        db_nodes=3,
-        batch=True,
-        interface="lo",
-        launcher="slurm",
-        run_command="srun",
-    )
-    orc.set_batch_arg("account", "ACCOUNT")
-
-    exp.preview(orc, verbosity_level="developer")

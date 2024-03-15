@@ -55,6 +55,49 @@ class Verbosity(str, Enum):
     DEVELOPER = "developer"
 
 
+@pass_eval_context
+def as_toggle(_eval_ctx: u.F, value: bool) -> str:
+    return "On" if value else "Off"
+
+
+@pass_eval_context
+def get_ifname(_eval_ctx: u.F, value: t.List[str]) -> str:
+    if value:
+        for val in value:
+            if "ifname=" in val:
+                output = val.split("=")[-1]
+                return output
+    return ""
+
+
+@pass_eval_context
+def get_dbtype(_eval_ctx: u.F, value: str) -> t.Any:
+    if value:
+        if "-cli" in value:
+            db_type, _ = value.split("/")[-1].split("-", 1)
+            return db_type
+    return ""
+
+
+@pass_eval_context
+def is_list(_eval_ctx: u.F, value: str):
+    return isinstance(value, list)
+
+
+@pass_eval_context
+def launch_cmd_formatter(_eval_ctx: u.F, value: str):
+
+    a_string = ""
+    for item in value:
+        if type(item) is list:
+            value = " ".join(map(str, item))
+            a_string += f" {value}\n\n"
+        else:
+            value = "".join(map(str, item))
+            a_string += f" {value}"
+    return a_string
+
+
 def render(
     exp: "Experiment",
     manifest: t.Optional[Manifest] = None,
@@ -84,6 +127,8 @@ def render(
     env.filters["as_toggle"] = as_toggle
     env.filters["get_ifname"] = get_ifname
     env.filters["get_dbtype"] = get_dbtype
+    env.filters["is_list"] = is_list
+    env.filters["launch_cmd_formatter"] = launch_cmd_formatter
     env.globals["Verbosity"] = Verbosity
 
     version = f"_{output_format}"
@@ -111,30 +156,6 @@ def render(
     )
     print(rendered_preview)
     return rendered_preview
-
-
-@pass_eval_context
-def as_toggle(_eval_ctx: u.F, value: bool) -> str:
-    return "On" if value else "Off"
-
-
-@pass_eval_context
-def get_ifname(_eval_ctx: u.F, value: t.List[str]) -> str:
-    if value:
-        for val in value:
-            if "ifname=" in val:
-                output = val.split("=")[-1]
-                return output
-    return ""
-
-
-@pass_eval_context
-def get_dbtype(_eval_ctx: u.F, value: str) -> t.Any:
-    if value:
-        if "-cli" in value:
-            db_type, _ = value.split("/")[-1].split("-", 1)
-            return db_type
-    return ""
 
 
 def preview_to_file(content: str, filename: str) -> None:

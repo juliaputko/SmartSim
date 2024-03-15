@@ -4,4 +4,4 @@
 {% endif %}
 {%- if verbosity_level == Verbosity.DEBUG or verbosity_level == Verbosity.DEVELOPER %}
 {%- include "preview/clientconfigcolo_plain_text_debug.template" %}
-{% endif %}
+{%- endif %}

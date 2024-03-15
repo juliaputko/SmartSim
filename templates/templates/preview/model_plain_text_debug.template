@@ -11,7 +11,7 @@
         {%- if model.run_settings.run_args %}
         Run Arguments:
         {%- for key, value in model.run_settings.run_args.items() %}
-          {{ key }}: {{ value }}
+          {{ key }} {{ value }}
         {%- endfor %}
         {%- endif %}
         {%- if model.batch_settings %}
@@ -74,17 +74,17 @@
         {%- if model.run_settings.colocated_db_settings['db_scripts'] %}
         Torch Scripts:
         {%- for script in model.run_settings.colocated_db_settings['db_scripts'] %}
-          Script Name: {{ script.name }}
-            Script Path: {{ script.script_path }}
+          Name: {{ script.name }}
+            Path: {{ script.script_path }}
             Backend: {{ script.device }}
             Devices Per Node: {{ script.devices_per_node }}
         {%- endfor %}
-    {%- endif %}
-    {%- if model.run_settings.colocated_db_settings['db_models'] %}
+        {%- endif %}
+        {%- if model.run_settings.colocated_db_settings['db_models'] %}
         ML Models:
         {%- for mlmodel in model.run_settings.colocated_db_settings['db_models'] %}
-          Model Name: {{ mlmodel.name }}
-            Model Path: {{ mlmodel.model_file }}
+          Name: {{ mlmodel.name }}
+            Path: {{ mlmodel.model_file }}
             Backend: {{ mlmodel.backend }}
             Device: {{ mlmodel.device }}
             Devices Per Node: {{ mlmodel.devices_per_node }}

@@ -4,8 +4,8 @@
         Members: {{ ensemble|length }}
         {%- if ensemble.params %}
         Ensemble Parameters:
-            {%- for key, value in ensemble.params.items() %}
-          {{ key }}: {{ '{:^9}'.format(value|string)|truncate(81,true,'...')}}
+          {%- for key, value in ensemble.params.items() %}
+          {{ key }}: {{ value | join(", ") | wordwrap(150) | safe | replace('\n', '\n              ') }}
         {%- endfor %}
         {%- endif %}
         {%- if ensemble.batch_settings %}
@@ -18,11 +18,20 @@
           {{ key }}: {{ value }}
         {%- endfor %}
         {%- endif %}
-    {% if verbosity_level == Verbosity.DEBUG %}
-    {% for model in ensemble %}
+        {%- if verbosity_level == Verbosity.DEVELOPER %}
+        {%- if ensemble.batch %}
+        Launch Command:
+        {{ ensemble.batch_settings.get_batch_launch_cmd | launch_cmd_formatter | wordwrap(150) | safe | replace('\n', '\n         ') }}
+        {%- endif %}
+        {%- endif %}
+
+    {%- if verbosity_level == Verbosity.DEBUG %}
+    {%- for model in ensemble.entities %}
+
     - Model Name: {{ model.name }} -
     {%- include 'preview/model_plain_text.template' %}
         {%- if model.run_settings.colocated_db_settings or manifest.dbs %}
+
         Client Configuration:
             {%- if model.run_settings.colocated_db_settings %}
             {%- include "preview/clientconfigcolo_plain_text.template" %}
@@ -30,35 +39,34 @@
             {%- if manifest.dbs %}
             {%- include "preview/clientconfig_plain_text.template" %}
             {%- endif %}
-
-        {%- endif %}
-    {% endfor %}
-
+    {%- endif %}
+  {%- endfor %}
     {%- endif %}
     {%- if verbosity_level == Verbosity.DEVELOPER %}
     {%- for model in ensemble.entities %}
+
     - Model Name: {{ model.name }} -
-    {%- include 'preview/model_plain_text_debug.template' %}
+        {%- include 'preview/model_plain_text_debug.template' %}
         {%- if model.run_settings.colocated_db_settings or manifest.dbs %}
+
         Client Configuration:
             {%- if model.run_settings.colocated_db_settings %}
-                {% include "preview/clientconfigcolo_plain_text.template" %}
+            {%- include "preview/clientconfigcolo_plain_text.template" %}
             {%- endif %}
             {%- if manifest.dbs %}
             {%- include "preview/clientconfig_plain_text.template" %}
             {%- endif %}
         {%- endif %}
 
-        Launch command:
-        {%- for item in model.run_settings._create_job_step_rs(ensemble) %}
-          {{ item|wordwrap(85)}}
-        {%- endfor %}
+        {%- if model.run_settings.get_launch_cmd %}
 
-        {{ script }}
-
-    {%- endfor %}
-    {%- endif %}
+        Launch Command:
+        {{ model.run_settings.get_launch_cmd | launch_cmd_formatter | wordwrap(150) | safe | replace('\n', '\n         ') }}
+        {%- endif %}
 
 
 
+
+{%- endfor %}
+{%- endif %}
 {%- endfor %}
