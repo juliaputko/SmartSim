@@ -591,8 +591,6 @@ class Controller:
         batch_step.meta["entity_type"] = str(type(entity_list).__name__).lower()
         batch_step.meta["status_dir"] = str(telemetry_dir / entity_list.name)
 
-        ### add it to the run settingsss.
-
         entity_list.batch_settings.meta["entity_type"] = str(
             type(entity_list).__name__
         ).lower()
@@ -636,9 +634,11 @@ class Controller:
         step.meta["status_dir"] = str(telemetry_dir / entity.name)
         # add this dictionary to the run_settings
         # --> changing it to this...
-        entity.run_settings.meta["entity_type"] = str(type(entity).__name__).lower()
-        entity.run_settings.meta["status_dir"] = str(telemetry_dir / entity.name)
 
+        # jpnote
+        entity.run_settings.meta["entity_type"] = str(type(entity).__name__).lower()
+        ## for the preview I need to move these out of the controller??
+        entity.run_settings.meta["status_dir"] = str(telemetry_dir / entity.name)
         return step
 
     def _prep_entity_client_env(self, entity: Model) -> None:

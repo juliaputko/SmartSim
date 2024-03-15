@@ -146,7 +146,8 @@ def proxyable_launch_cmd(
         proxy_module = "smartsim._core.entrypoints.indirect"
         etype = self.meta["entity_type"]
         status_dir = self.meta["status_dir"]
-        encoded_cmd = encode_cmd(original_cmd_list)
+        # encoded_cmd = encode_cmd(original_cmd_list)
+        encoded_cmd = original_cmd_list
         # jpnote
         # print("in step.py")
         # print("\nNAME:", self.name)

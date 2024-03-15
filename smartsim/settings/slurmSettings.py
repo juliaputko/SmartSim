@@ -35,6 +35,10 @@ from ..error import SSUnsupportedError
 from ..log import get_logger
 from .base import BatchSettings, RunSettings
 
+import shutil
+from smartsim.settings.containers import Singularity
+from shlex import split as sh_split
+
 logger = get_logger(__name__)
 
 
@@ -47,6 +51,7 @@ class SrunSettings(RunSettings):
         env_vars: t.Optional[t.Dict[str, t.Optional[str]]] = None,
         alloc: t.Optional[str] = None,
         meta: t.Dict[str, str] = None,
+        launch_cmd: t.Optional[str] = None,
         **kwargs: t.Any,
     ) -> None:
         """Initialize run parameters for a slurm job with ``srun``
@@ -78,8 +83,119 @@ class SrunSettings(RunSettings):
         self.alloc = alloc
         self.mpmd: t.List[RunSettings] = []
         self.meta = meta or {}
+        self.launch_cmd = launch_cmd
 
     reserved_run_args = {"chdir", "D"}
+
+    @property
+    def get_launch_cmd(self):
+        return self.launch_cmd
+
+    def _create_job_step_rs(self, entity, telemetry_dir: t.Optional[t.Any] = None):
+
+        self.get_launch_cmd_jp(entity.name, entity.path)
+
+    def get_launch_cmd_jp(self, name, path) -> t.List[str]:
+        """Get the command to launch this step
+
+        :return: launch command
+        :rtype: list[str]
+        """
+        # jpnote
+        srun = self.run_command
+        if not srun:
+            raise ValueError("No srun command found in PATH")
+
+        output, error = self.get_output_files(name, path)
+
+        srun_cmd = [srun, "--output", output, "--error", error, "--job-name", name]
+        compound_env: t.Set[str] = set()
+
+        if self.alloc:
+            srun_cmd += ["--jobid", str(self.alloc)]
+
+        if self.env_vars:
+            env_vars, csv_env_vars = self.format_comma_sep_env_vars()
+
+            if len(env_vars) > 0:
+                srun_cmd += ["--export", f"ALL,{env_vars}"]
+
+            if csv_env_vars:
+                compound_env = compound_env.union(csv_env_vars)
+
+        srun_cmd += self.format_run_args()
+
+        if self.colocated_db_settings:
+            # Replace the command with the entrypoint wrapper script
+            bash = shutil.which("bash")
+            if not bash:
+                raise RuntimeError("Could not find bash in PATH")
+            launch_script_path = self.get_colocated_launch_script(name, path)
+            srun_cmd += [bash, launch_script_path]
+
+        if isinstance(self.container, Singularity):
+            # pylint: disable-next=protected-access
+            srun_cmd += self.container._container_cmds(self.cwd)
+
+        if compound_env:
+            srun_cmd = ["env"] + list(compound_env) + srun_cmd
+
+        srun_cmd += self._build_exe(name)
+
+        self.launch_cmd = srun_cmd
+        return srun_cmd
+
+    def _build_exe(self, name) -> t.List[str]:
+        """Build the executable for this step
+
+        :return: executable list
+        :rtype: list[str]
+        """
+        if self._get_mpmd():
+            return self._make_mpmd(name)
+
+        exe = self.exe
+        args = self._get_exe_args_list(self)
+        return exe + args
+
+    def _get_mpmd(self) -> t.List[RunSettings]:
+        """Temporary convenience function to return a typed list
+        of attached RunSettings
+        """
+        return self.mpmd
+
+    def _make_mpmd(self, name) -> t.List[str]:
+        """Build Slurm multi-prog (MPMD) executable"""
+        exe = self.exe
+        args = self._get_exe_args_list(self)
+        cmd = exe + args
+
+        compound_env_vars = []
+        for mpmd_rs in self._get_mpmd():
+            cmd += [" : "]
+            cmd += mpmd_rs.format_run_args()
+            cmd += ["--job-name", name]
+
+            if isinstance(mpmd_rs, SrunSettings):
+                (env_var_str, csv_env_vars) = mpmd_rs.format_comma_sep_env_vars()
+                if len(env_var_str) > 0:
+                    cmd += ["--export", f"ALL,{env_var_str}"]
+                if csv_env_vars:
+                    compound_env_vars.extend(csv_env_vars)
+            cmd += mpmd_rs.exe
+            cmd += self._get_exe_args_list(mpmd_rs)
+
+        cmd = sh_split(" ".join(cmd))
+        return cmd
+
+    @staticmethod
+    def _get_exe_args_list(run_setting: RunSettings) -> t.List[str]:
+        """Convenience function to encapsulate checking the
+        runsettings.exe_args type to always return a list
+        """
+        exe_args = run_setting.exe_args
+        args: t.List[str] = exe_args if isinstance(exe_args, list) else [exe_args]
+        return args
 
     def set_nodes(self, nodes: int) -> None:
         """Set the number of nodes
@@ -418,6 +534,7 @@ class SbatchSettings(BatchSettings):
         account: t.Optional[str] = None,
         batch_args: t.Optional[t.Dict[str, t.Optional[str]]] = None,
         meta: t.Dict[str, str] = None,
+        batch_launch_cmd: t.Optional[t.Any] = None,
         **kwargs: t.Any,
     ) -> None:
         """Specify run parameters for a Slurm batch job
@@ -450,13 +567,21 @@ class SbatchSettings(BatchSettings):
         )
         self.step_cmds: t.List[t.List[str]] = ([],)
         self.meta = meta or {}
+        self.batch_launch_cmd = batch_launch_cmd
 
-    def _create_batch_job_step_rs(self, entity):
+    @property
+    def get_batch_launch_cmd(self):
+        return self.batch_launch_cmd
 
-        # print("in slurm settings:")
-        self.meta["entity_type"] = str(type(entity).__name__).lower()
-        # self.meta["status_dir"] = str(telemetry_dir / entity.name)
-        # jpnotes:: can I just pass in the entity..
+    def _create_batch_job_step_rs(self, entity, telemetry_dir):
+
+        # # print("in slurm settings:")
+        # self.meta["entity_type"] = str(type(entity).__name__).lower()
+        # # self.meta["status_dir"] = str(telemetry_dir / entity.name)
+        # # jpnotes:: can I just pass in the entity..
+
+        self.batch_launch_cmd = self.get_launch_cmd(entity.name, entity.path)
+
         return self.get_launch_cmd(entity.name, entity.path)
 
     def get_launch_cmd(self, name, path) -> t.List[str]:
@@ -466,11 +591,17 @@ class SbatchSettings(BatchSettings):
         :rtype: list[str]
         """
         script, string_script = self._write_script_jp(name, path)
+
+        # jpnote
         # print(script)
         # print("\n THE LAUNCH COMMAND")
-        # print([self.batch_cmd, "--parsable", script])
-        # print(type(string_script))
+
         # print(string_script)
+        # print(string_script)
+        # self.batch_launch_cmd = script + string_script
+        # print(self.batch_launch_cmd)
+        # self.batch_launch_cmd = [self.batch_cmd, "--parsable", script]
+        # print(self.batch_launch_cmd)
         return [self.batch_cmd, "--parsable", script], string_script
 
     def _write_script_jp(self, name, path) -> str:

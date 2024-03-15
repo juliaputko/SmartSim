@@ -832,6 +832,187 @@ class Experiment:
             logger.error(e)
             raise
 
+    ###
+    def create_launch_command(self, preview_manifest):
+        """
+        Create the launch commands for preview
+        The launch commands built here are only for preview
+        not for actual launch.
+        """
+        manifest_builder = LaunchedManifestBuilder[t.Tuple[str, Step]](
+            exp_name=self.name, exp_path=self.exp_path, launcher_name=""
+        )
+        orc_telem_dir = manifest_builder.run_telemetry_subdirectory / "database"
+
+        # print("orc_telem_dir", orc_telem_dir)
+
+        # *** copy what is in the launch ******
+        # Loop over deployables to launch multiple orchestrators
+        for orchestrator in preview_manifest.dbs:
+
+            if orchestrator.batch:
+                # orc_batch_step, substeps = self._control._create_batch_job_step(
+                #    orchestrator, orc_telem_dir
+                # )
+
+                ## send to create_job_step_rs...
+                # print(orchestrator.batch_settings)
+                #       ### CREATE A BATCH JOB STEP
+                # orc_batch_step, substeps = (
+                #     orchestrator.batch_settings._create_batch_job_step_rs(
+                #         orchestrator.name, orchestrator.path
+                #     )
+                # )
+
+                launch_cmd, script_read = (
+                    orchestrator.batch_settings._create_batch_job_step_rs(
+                        orchestrator, orc_telem_dir
+                    )
+                )
+
+            #  print(launch_cmd)
+            #  print(script_read)
+
+            # print(db_steps)
+            ###
+
+            # manifest_builder.add_database(
+            #    orchestrator, [(orc_batch_step.name, step) for step in substeps]
+            # )
+            # self._control._launch_step(orc_batch_step, orchestrator)
+
+            else:
+
+                db_steps = [
+                    (
+                        self._control._create_job_step(
+                            db, orc_telem_dir / orchestrator.name
+                        ),
+                        db,
+                    )
+                    for db in orchestrator.entities
+                ]
+
+                for db in orchestrator.entities:
+                    ## send to create_job_step_rs...
+                    ## can I pass in the entity ??
+                    db.run_settings._create_job_step_rs(
+                        db, orc_telem_dir / orchestrator.name
+                    )
+                    # print(db.run_settings._create_job_step_rs(db))
+                # print(db_steps)
+
+                for db_step in db_steps:
+                    # print(db_step[0])
+                    cmd = db_step[0].get_launch_cmd()
+                # print(cmd)
+                # print("\n normal launch command", cmd)
+
+                ## get the output files
+
+        ### MODELS
+
+        steps: t.List[
+            t.Tuple[Step, t.Union[SmartSimEntity, EntitySequence[SmartSimEntity]]]
+        ] = []
+
+        ## ENSEMBLES
+        for elist in preview_manifest.ensembles:
+            ens_telem_dir = manifest_builder.run_telemetry_subdirectory / "ensemble"
+            if elist.batch:
+
+                # batch_step, substeps = self._control._create_batch_job_step(
+                #     elist, ens_telem_dir
+                # )
+
+                batch_step, substeps = elist.batch_settings._create_batch_job_step_rs(
+                    elist, ens_telem_dir
+                )
+                # telemetry_dir = telemetry_dir / elist.name
+                elist.batch_settings.meta["entity_type"] = str(
+                    type(elist).__name__
+                ).lower()
+                elist.batch_settings.meta["status_dir"] = str(
+                    ens_telem_dir / elist.name
+                )
+
+                substeps = []
+                for entity in elist.entities:
+                    # ")
+                    # print(entity)
+                    # tells step creation not to look for an allocation
+                    entity.run_settings.in_batch = True
+                    step = entity.run_settings._create_job_step_rs(
+                        entity, ens_telem_dir
+                    )
+                    substeps.append(step)
+                # batch_step.add_to_batch(step)
+
+            # manifest_builder.add_ensemble(
+            #     elist, [(batch_step.name, step) for step in substeps]
+            # )
+            # steps.append((batch_step, elist))
+            else:
+                # if ensemble is to be run as separate job steps, aka not in a batch
+                job_steps = [
+                    (
+                        e.run_settings._create_job_step_rs(
+                            e, ens_telem_dir / elist.name
+                        ),
+                        e,
+                    )
+                    for e in elist.entities
+                ]
+
+                # manifest_builder.add_ensemble(
+                #     elist, [(step.name, step) for step, _ in job_steps]
+                # )
+                # steps.extend(job_steps)
+
+        # launch steps
+        for step, entity in steps:
+            # print("\n ensembles ", step.get_launch_cmd())
+            step.get_launch_cmd()
+
+        ###############
+
+        for model in preview_manifest.models:
+            model_telem_dir = manifest_builder.run_telemetry_subdirectory / "model"
+            if model.batch_settings:
+                anon_entity_list = _AnonymousBatchJob(model)
+                # batch_step, _ = self._control._create_batch_job_step(
+                #     anon_entity_list, model_telem_dir
+                # )
+                # print("get the batch step from model run settings")
+                batch_step_jp, _ = model.batch_settings._create_batch_job_step_rs(
+                    anon_entity_list, model_telem_dir
+                )
+                # print(batch_step)
+            # print(batch_step_jp)
+            # ['/usr/bin/sbatch', '--parsable', '/lus/sonexion/putko/SmartSim/tests/test_output/test_preview/test_preview_batch_launch_command/model.sh']
+
+            # print(model.batch_settings._create_batch_job_step(anon_entity_list))
+
+            # manifest_builder.add_model(model, (batch_step.name, batch_step))
+            #  steps.append((batch_step, model))
+            else:
+                job_step = self._control._create_job_step(model, model_telem_dir)
+
+                # print("DONT WE GET HERE?")
+                new_launch_cmd = model.run_settings._create_job_step_rs(
+                    model, model_telem_dir
+                )
+
+                #  print("new launch cmd", new_launch_cmd)
+
+                manifest_builder.add_model(model, (job_step.name, job_step))
+                steps.append((job_step, model))
+
+            # print("\n model steps", steps[0][0].get_launch_cmd())
+        # print("\n model steps", steps[1][0].get_launch_cmd())
+
+    ###
+
     def preview(
         self,
         *args: t.Any,
@@ -869,146 +1050,7 @@ class Experiment:
 
         preview_manifest = Manifest(*args)
 
-        manifest_builder = LaunchedManifestBuilder[t.Tuple[str, Step]](
-            exp_name=self.name, exp_path=self.exp_path, launcher_name=""
-        )
-        orc_telem_dir = manifest_builder.run_telemetry_subdirectory / "database"
-
-        # *** copy what is in the launch ******
-        # Loop over deployables to launch multiple orchestrators
-        for orchestrator in preview_manifest.dbs:
-
-            if orchestrator.batch:
-                # orc_batch_step, substeps = self._control._create_batch_job_step(
-                #    orchestrator, orc_telem_dir
-                # )
-
-                ## send to create_job_step_rs...
-                print(orchestrator.batch_settings)
-                #       ### CREATE A BATCH JOB STEP
-                # orc_batch_step, substeps = (
-                #     orchestrator.batch_settings._create_batch_job_step_rs(
-                #         orchestrator.name, orchestrator.path
-                #     )
-                # )
-                launch_cmd, script_read = (
-                    orchestrator.batch_settings._create_batch_job_step_rs(orchestrator)
-                )
-                # print("\n IN EXPERIMENT====")
-                # print(launch_cmd)
-                # print(script_read)
-                # # for x in
-                # print("\n batch launch cmd")
-                # print(launch_cmd)
-                # print("\n batch script ")
-                # print(script_read)
-
-                # print(db_steps)
-                ###
-
-            # manifest_builder.add_database(
-            #    orchestrator, [(orc_batch_step.name, step) for step in substeps]
-            # )
-            # self._control._launch_step(orc_batch_step, orchestrator)
-
-            else:
-
-                db_steps = [
-                    (
-                        self._control._create_job_step(
-                            db, orc_telem_dir / orchestrator.name
-                        ),
-                        db,
-                    )
-                    for db in orchestrator.entities
-                ]
-
-                for db in orchestrator.entities:
-                    ## send to create_job_step_rs...
-                    ## can I pass in the entity ??
-                    db.run_settings._create_job_step_rs(db)
-                # print(db_steps)
-
-                for db_step in db_steps:
-                    # print(db_step[0])
-                    cmd = db_step[0].get_launch_cmd()
-                # print("\n normal launch command", cmd)
-
-                ## get the output files
-
-        ### MODELS
-
-        steps: t.List[
-            t.Tuple[Step, t.Union[SmartSimEntity, EntitySequence[SmartSimEntity]]]
-        ] = []
-
-        ## ENSEMBLES
-        for elist in preview_manifest.ensembles:
-            ens_telem_dir = manifest_builder.run_telemetry_subdirectory / "ensemble"
-            if elist.batch:
-                batch_step, substeps = self._control._create_batch_job_step(
-                    elist, ens_telem_dir
-                )
-                manifest_builder.add_ensemble(
-                    elist, [(batch_step.name, step) for step in substeps]
-                )
-                steps.append((batch_step, elist))
-            else:
-                # if ensemble is to be run as separate job steps, aka not in a batch
-                job_steps = [
-                    (self._control._create_job_step(e, ens_telem_dir / elist.name), e)
-                    for e in elist.entities
-                ]
-
-                job_steps = [
-                    (self._control._create_job_step(e, ens_telem_dir / elist.name), e)
-                    for e in elist.entities
-                ]
-
-                for e in elist.entities:
-                    # e.run_settings._create_job_step_rs(elist.name, elist.path)
-                    e.run_settings._create_job_step_rs(elist)
-
-                manifest_builder.add_ensemble(
-                    elist, [(step.name, step) for step, _ in job_steps]
-                )
-                steps.extend(job_steps)
-
-        # launch steps
-        for step, entity in steps:
-            # print("\n ensembles ", step.get_launch_cmd())
-            step.get_launch_cmd()
-
-        ###############
-
-        for model in preview_manifest.models:
-            model_telem_dir = manifest_builder.run_telemetry_subdirectory / "model"
-            if model.batch_settings:
-                anon_entity_list = _AnonymousBatchJob(model)
-                batch_step, _ = self._control._create_batch_job_step(
-                    anon_entity_list, model_telem_dir
-                )
-
-                # print(model.batch_settings._create_batch_job_step(anon_entity_list))
-
-                manifest_builder.add_model(model, (batch_step.name, batch_step))
-                steps.append((batch_step, model))
-            else:
-                job_step = self._control._create_job_step(model, model_telem_dir)
-
-                new_launch_cmd = model.run_settings._create_job_step_rs(model)
-                # print("new launch cmd", new_launch_cmd)
-
-                manifest_builder.add_model(model, (job_step.name, job_step))
-                steps.append((job_step, model))
-
-            # print("\n model steps", steps[0][0].get_launch_cmd())
-        # print("\n model steps", steps[1][0].get_launch_cmd())
-
-        # **************
-        # *** getting the sbatch command?
-
-        #########
+        self.create_launch_command(preview_manifest)
 
         rendered_preview = previewrenderer.render(
             self,

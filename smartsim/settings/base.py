@@ -39,15 +39,22 @@ import pathlib
 import shutil
 import os
 
+
 import os.path as osp
+from os import makedirs
 
 from smartsim.settings.containers import Singularity
+
+from smartsim._core.utils.helpers import create_lockfile_name
+
+from smartsim.error import SSInternalError
 
 # from smartsim.settings.base import RunSettings
 
 
 # from .._core.launcher.step import Step
 # from ..error import AllocationError, LauncherError, SSUnsupportedError
+# from .._core.launcher.colocated import write_colocated_launch_script
 
 logger = get_logger(__name__)
 
@@ -95,7 +102,7 @@ def proxyable_launch_cmd_jp(
 
         # local launch for now:
         managed = False
-        original_cmd_list = fn(self)
+        original_cmd_list = fn(self, name, path)
 
         if not CONFIG.telemetry_enabled:
             return original_cmd_list
@@ -117,7 +124,9 @@ def proxyable_launch_cmd_jp(
         status_dir = self.meta["status_dir"]
         # print("before the encoding")
         # print(original_cmd_list)
-        encoded_cmd = encode_cmd(original_cmd_list)
+        #  encoded_cmd = encode_cmd(original_cmd_list)
+        encoded_cmd = original_cmd_list
+
         # print("after")
         # print(encoded_cmd)
         # jpnote
@@ -143,8 +152,6 @@ def proxyable_launch_cmd_jp(
             path,
         ]
 
-    # print("the launch command")
-    # print(_get_launch_cmd_jp)
     return _get_launch_cmd_jp
 
 
@@ -168,6 +175,7 @@ class RunSettings(SettingsBase):
         env_vars: t.Optional[t.Dict[str, t.Optional[str]]] = None,
         container: t.Optional[Container] = None,
         meta: t.Dict[str, str] = None,
+        launch_cmd: t.Optional[str] = None,
         **_kwargs: t.Any,
     ) -> None:
         """Run parameters for a ``Model``
@@ -234,11 +242,21 @@ class RunSettings(SettingsBase):
 
         self.meta = meta or {}
 
+        self.launch_cmd = launch_cmd
+
+        # print("META", meta)
+
     # def jpmeta(self) -> t.Dict[str, str]:
     #     return self.get_meta
 
+    # def get_launch_command_jp(self):
+
+    @property
+    def get_launch_cmd(self):
+        return self.launch_cmd
+
     # creating the job step here
-    def _create_job_step_rs(self, entity):  # ?
+    def _create_job_step_rs(self, entity, telemetry_dir: t.Optional[t.Any] = None):  # ?
         """Create job steps for all entities with the launcher
 
         :param entity: an entity to create a step for
@@ -255,24 +273,20 @@ class RunSettings(SettingsBase):
         # step = self._launcher.create_step(entity.name, entity.path, entity.run_settings)
         # instead of this command .. and making it off of the run settings ..
         # call get_launch_cmd in local step
+
+        self.meta["entity_type"] = str(type(entity).__name__).lower()
+        # print("DOES THIS SHOW ANYTHING", str(type(entity).__name__).lower())
+        # print(telemetry_dir)  # is nont
+        # print(str(telemetry_dir / entity.name))
+        self.meta["status_dir"] = str(telemetry_dir / entity.name)
+        # why cant I get meta [] working ...
+
         step = self.get_launch_cmd_jp(entity.name, entity.path)
-        # print(self.meta)
-        # self.meta["entity_type"] = str(type(entity).__name__).lower()
-        # self.meta["status_dir"] = str(telemetry_dir / entity.name)
-        # print("\n==============")
-        # print(entity.name)
-        # print(step)
-        # print("==============")
-        # jpnote
+
         return step
 
-        # print(entity.name)
-        # print(entity.path)
-
-    # self.get_launch_cmd(entity.name, entity.path)
-
     @proxyable_launch_cmd_jp
-    def get_launch_cmd_jp(self) -> t.List[str]:
+    def get_launch_cmd_jp(self, name, path) -> t.List[str]:
         cmd = []
 
         # Add run command and args if user specified
@@ -287,7 +301,7 @@ class RunSettings(SettingsBase):
             if not (bash := shutil.which("bash")):
                 raise RuntimeError("Unable to locate bash interpreter")
 
-            launch_script_path = self.get_colocated_launch_script()
+            launch_script_path = self.get_colocated_launch_script(name, path)
             cmd.extend([bash, launch_script_path])
 
         container = self.container
@@ -300,10 +314,258 @@ class RunSettings(SettingsBase):
 
         if self.exe_args:
             cmd.extend(self.exe_args)
-        # print("the cmd:", cmd)
+
+        self.launch_cmd = cmd  # get it from here??
+        # print(self.launch_cmd)
         return cmd
 
-        ## get the output and err files ??
+    def get_colocated_launch_script(self, entity_name, path) -> str:
+        # prep step for colocated launch if specifed in run settings
+        script_path = self.get_step_file(
+            entity_name,
+            path,
+            script_name=osp.join(".smartsim", f"colocated_launcher_{entity_name}.sh"),
+        )
+        makedirs(osp.dirname(script_path), exist_ok=True)
+
+        db_settings = {}
+        # jpnote what is this looking for
+        # if isinstance(self.step_settings, RunSettings):
+        #     db_settings = self.step_settings.colocated_db_settings or {}
+
+        if isinstance(self, RunSettings):
+            db_settings = self.colocated_db_settings or {}
+
+        # db log file causes write contention and kills performance so by
+        # default we turn off logging unless user specified debug=True
+        if db_settings.get("debug", False):
+            db_log_file = self.get_step_file(entity_name, path, ending="-db.log")
+        else:
+            db_log_file = "/dev/null"
+
+        # write the colocated wrapper shell script to the directory for this
+        # entity currently being prepped to launch
+        self.write_colocated_launch_script(script_path, db_log_file, db_settings)
+        return script_path
+
+    def _build_db_model_cmd(self, db_models: t.List[DBModel]) -> t.List[str]:
+        cmd = []
+        for db_model in db_models:
+            cmd.append("+db_model")
+            cmd.append(f"--name={db_model.name}")
+
+            # Here db_model.file is guaranteed to exist
+            # because we don't allow the user to pass a serialized DBModel
+            cmd.append(f"--file={db_model.file}")
+
+            cmd.append(f"--backend={db_model.backend}")
+            cmd.append(f"--device={db_model.device}")
+            cmd.append(f"--devices_per_node={db_model.devices_per_node}")
+            cmd.append(f"--first_device={db_model.first_device}")
+            if db_model.batch_size:
+                cmd.append(f"--batch_size={db_model.batch_size}")
+            if db_model.min_batch_size:
+                cmd.append(f"--min_batch_size={db_model.min_batch_size}")
+            if db_model.min_batch_timeout:
+                cmd.append(f"--min_batch_timeout={db_model.min_batch_timeout}")
+            if db_model.tag:
+                cmd.append(f"--tag={db_model.tag}")
+            if db_model.inputs:
+                cmd.append("--inputs=" + ",".join(db_model.inputs))
+            if db_model.outputs:
+                cmd.append("--outputs=" + ",".join(db_model.outputs))
+
+        # self.launch_cmd = cmd
+        return cmd
+
+    def _build_db_script_cmd(self, db_scripts: t.List[DBScript]) -> t.List[str]:
+        cmd = []
+        for db_script in db_scripts:
+            cmd.append("+db_script")
+            cmd.append(f"--name={db_script.name}")
+            if db_script.func:
+                # Notice that here db_script.func is guaranteed to be a str
+                # because we don't allow the user to pass a serialized function
+                sanitized_func = db_script.func.replace("\n", "\\n")
+                if not (
+                    sanitized_func.startswith("'")
+                    and sanitized_func.endswith("'")
+                    or (sanitized_func.startswith('"') and sanitized_func.endswith('"'))
+                ):
+                    sanitized_func = '"' + sanitized_func + '"'
+                cmd.append(f"--func={sanitized_func}")
+            elif db_script.file:
+                cmd.append(f"--file={db_script.file}")
+            cmd.append(f"--device={db_script.device}")
+            cmd.append(f"--devices_per_node={db_script.devices_per_node}")
+            cmd.append(f"--first_device={db_script.first_device}")
+        # self.launch_cmd = cmd
+        return cmd
+
+    def _build_colocated_wrapper_cmd(
+        self,
+        db_log: str,
+        cpus: int = 1,
+        rai_args: t.Optional[t.Dict[str, str]] = None,
+        extra_db_args: t.Optional[t.Dict[str, str]] = None,
+        port: int = 6780,
+        ifname: t.Optional[t.Union[str, t.List[str]]] = None,
+        custom_pinning: t.Optional[str] = None,
+        **kwargs: t.Any,
+    ) -> str:
+        """Build the command use to run a colocated DB application
+
+        :param db_log: log file for the db
+        :type db_log: str
+        :param cpus: db cpus, defaults to 1
+        :type cpus: int, optional
+        :param rai_args: redisai args, defaults to None
+        :type rai_args: dict[str, str], optional
+        :param extra_db_args: extra redis args, defaults to None
+        :type extra_db_args: dict[str, str], optional
+        :param port: port to bind DB to
+        :type port: int
+        :param ifname: network interface(s) to bind DB to
+        :type ifname: str | list[str], optional
+        :param db_cpu_list: The list of CPUs that the database should be limited to
+        :type db_cpu_list: str, optional
+        :return: the command to run
+        :rtype: str
+        """
+        # pylint: disable=too-many-locals
+
+        # create unique lockfile name to avoid symlink vulnerability
+        # this is the lockfile all the processes in the distributed
+        # application will try to acquire. since we use a local tmp
+        # directory on the compute node, only one process can acquire
+        # the lock on the file.
+        lockfile = create_lockfile_name()
+
+        # create the command that will be used to launch the
+        # database with the python entrypoint for starting
+        # up the backgrounded db process
+
+        cmd = [
+            sys.executable,
+            "-m",
+            "smartsim._core.entrypoints.colocated",
+            "+lockfile",
+            lockfile,
+            "+db_cpus",
+            str(cpus),
+        ]
+        # Add in the interface if using TCP/IP
+        if ifname:
+            if isinstance(ifname, str):
+                ifname = [ifname]
+            cmd.extend(["+ifname", ",".join(ifname)])
+        cmd.append("+command")
+        # collect DB binaries and libraries from the config
+
+        db_cmd = []
+        if custom_pinning:
+            db_cmd.extend(["taskset", "-c", custom_pinning])
+        db_cmd.extend(
+            [CONFIG.database_exe, CONFIG.database_conf, "--loadmodule", CONFIG.redisai]
+        )
+
+        # add extra redisAI configurations
+        for arg, value in (rai_args or {}).items():
+            if value:
+                # RAI wants arguments for inference in all caps
+                # ex. THREADS_PER_QUEUE=1
+                db_cmd.append(f"{arg.upper()} {str(value)}")
+
+        db_cmd.extend(["--port", str(port)])
+
+        # Add socket and permissions for UDS
+        unix_socket = kwargs.get("unix_socket", None)
+        socket_permissions = kwargs.get("socket_permissions", None)
+
+        if unix_socket and socket_permissions:
+            db_cmd.extend(
+                [
+                    "--unixsocket",
+                    str(unix_socket),
+                    "--unixsocketperm",
+                    str(socket_permissions),
+                ]
+            )
+        elif bool(unix_socket) ^ bool(socket_permissions):
+            raise SSInternalError(
+                "`unix_socket` and `socket_permissions` must both be defined or undefined."
+            )
+
+        db_cmd.extend(
+            ["--logfile", db_log]
+        )  # usually /dev/null, unless debug was specified
+        if extra_db_args:
+            for db_arg, value in extra_db_args.items():
+                # replace "_" with "-" in the db_arg because we use kwargs
+                # for the extra configurations and Python doesn't allow a hyphen
+                # in a variable name. All redis and KeyDB configuration options
+                # use hyphens in their names.
+                db_arg = db_arg.replace("_", "-")
+                db_cmd.extend([f"--{db_arg}", value])
+
+        db_models = kwargs.get("db_models", None)
+        if db_models:
+            db_model_cmd = self._build_db_model_cmd(db_models)
+            db_cmd.extend(db_model_cmd)
+
+        db_scripts = kwargs.get("db_scripts", None)
+        if db_scripts:
+            db_script_cmd = self._build_db_script_cmd(db_scripts)
+            db_cmd.extend(db_script_cmd)
+
+        # run colocated db in the background
+        db_cmd.append("&")
+
+        cmd.extend(db_cmd)
+        return " ".join(cmd)
+
+    def write_colocated_launch_script(
+        self, file_name: str, db_log: str, colocated_settings: t.Dict[str, t.Any]
+    ) -> None:
+        """Write the colocated launch script
+
+        This file will be written into the cwd of the step that
+        is created for this entity.
+
+        :param file_name: name of the script to write
+        :type file_name: str
+        :param db_log: log file for the db
+        :type db_log: str
+        :param colocated_settings: db settings from entity run_settings
+        :type colocated_settings: dict[str, Any]
+        """
+
+        colocated_cmd = self._build_colocated_wrapper_cmd(db_log, **colocated_settings)
+
+        with open(file_name, "w", encoding="utf-8") as script_file:
+            script_file.write("#!/bin/bash\n")
+            script_file.write("set -e\n\n")
+
+            script_file.write("Cleanup () {\n")
+            script_file.write("if ps -p $DBPID > /dev/null; then\n")
+            script_file.write("\tkill -15 $DBPID\n")
+            script_file.write("fi\n}\n\n")
+
+            # run cleanup after all exitcodes
+            script_file.write("trap Cleanup exit\n\n")
+
+            # force entrypoint to write some debug information to the
+            # STDOUT of the job
+            if colocated_settings["debug"]:
+                script_file.write("export SMARTSIM_LOG_LEVEL=debug\n")
+
+            script_file.write(f"{colocated_cmd}\n")
+            script_file.write("DBPID=$!\n\n")
+
+            # Write the actual launch command for the app
+            script_file.write("$@\n\n")
+
+    ## get the output and err files ??
 
     def get_output_files(self, name, path) -> t.Tuple[str, str]:
         """Return two paths to error and output files based on cwd"""
@@ -841,6 +1103,8 @@ class BatchSettings(SettingsBase):
 
         self.meta = meta or {}
 
+    # self.batch_launch_cmd = batch_launch_cmd
+
     @property
     def batch_cmd(self) -> str:
         """Return the batch command
@@ -872,14 +1136,55 @@ class BatchSettings(SettingsBase):
     # run settings are
     # job step creation on the run command
 
-    def _create_batch_job_step_rs(self, entity):
-        # jpnote
-        # print("IN BASE")
-        # print(entity.name)
-        # print(entity.path)
+    def get_batch_launch_cmd(self): ...
 
-        self.meta["entity_type"] = str(type(entity).__name__).lower()
-        # self.batch_settings.meta["status_dir"] = str(telemetry_dir / entity.name)
+    def _create_batch_job_step_rs(
+        self, entity_list, telemetry_dir: t.Optional[t.Any] = None
+    ):
+        NotImplementedError
+
+        ## i think I just need everything for creating the launch command..
+        ## becuase instead of that stuff being in the
+
+        # dont actually want to move all of that outside the controller
+
+        # ## will not go into here at all
+        # ## will go directly into slurm settings
+        # ## function has the same name but is called by
+        # ## batch_settings.name
+        # ## where to I save it, can I have a getter fnct
+
+        # print("DOES IT EVER come into here? ")  # doesn't actually fall into here?
+        # # goes straight to slurm.. hmmmm
+        # if not entity_list.batch_settings:
+        #     raise ValueError(
+        #         "EntityList must have batch settings to be launched as batch"
+        #     )
+
+        # telemetry_dir = telemetry_dir / entity_list.name
+        # # batch_step = self._launcher.create_step(
+        # #     entity_list.name, entity_list.path, entity_list.batch_settings
+        # # )
+        # # dont create the step?
+        # ## what is this going into???
+        # self.meta["entity_type"] = str(type(entity_list).__name__).lower()
+        # self.meta["status_dir"] = str(telemetry_dir / entity_list.name)
+
+        # substeps = []
+        # for entity in entity_list.entities:
+        #     # tells step creation not to look for an allocation
+        #     entity.run_settings.in_batch = True
+        #     step = self._create_job_step_rs(entity, telemetry_dir)
+        #     substeps.append(step)
+        #     batch_step.add_to_batch(step)
+        # return batch_step, substeps
+
+        # self.meta["entity_type"] = str(type(entity).__name__).lower()
+        # self.meta["status_dir"] = str(telemetry_dir / entity.name)
+
+        # print("where is it getting the script?")
+
+        ##
 
     # print("\n The batch launch cmd?")
     # print(self.get_launch_cmd_batch())
