@@ -24,6 +24,7 @@
 # OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+import os.path as osp
 import typing as t
 
 from ..error import SSConfigError
@@ -43,6 +44,8 @@ class QsubBatchSettings(BatchSettings):
         account: t.Optional[str] = None,
         resources: t.Optional[t.Dict[str, t.Union[str, int]]] = None,
         batch_args: t.Optional[t.Dict[str, t.Optional[str]]] = None,
+        step_cmds: t.List[t.List[str]] = [],
+        batch_launch_cmd: t.Optional[str] = None,
         **kwargs: t.Any,
     ):
         """Specify ``qsub`` batch parameters for a job
@@ -72,7 +75,10 @@ class QsubBatchSettings(BatchSettings):
         self._ncpus = ncpus
 
         self.resources = resources or {}
+        self.step_cmds = step_cmds
         resource_nodes = self.resources.get("nodes", None)
+
+        self.batch_launch_cmd = batch_launch_cmd
 
         if nodes and resource_nodes:
             raise ValueError(
@@ -101,6 +107,87 @@ class QsubBatchSettings(BatchSettings):
     def resources(self, resources: t.Dict[str, t.Union[str, int]]) -> None:
         self._sanity_check_resources(resources)
         self._resources = resources.copy()
+
+
+    ### jp additions ###
+
+    @property
+    def get_batch_launch_cmd(self):
+        return self.batch_launch_cmd
+
+    def _create_batch_job_step_rs(self, entity, telemetry_dir: t.Optional[t.Any] = None):
+        print(entity.name)
+        print(entity.path)
+
+        self.batch_launch_cmd = self.get_launch_cmd_jp(entity.name, entity.path)
+        print(self.batch_launch_cmd)
+       
+        return self.get_launch_cmd_jp(entity.name, entity.path)
+       
+
+    def get_launch_cmd_jp(self, name, path) -> t.List[str]:
+        """Get the launch command for the batch
+
+        :return: launch command for the batch
+        :rtype: list[str]
+        """
+        script, string_script = self._write_script(name, path)
+        return [self.batch_cmd, script], string_script
+
+    def _write_script(self, name, path) -> str:
+        """Write the batch script
+
+        :return: batch script path after writing
+        :rtype: str
+        """
+        batch_script = self.get_step_file(name, path, ending=".sh")
+        output, error = self.get_output_files(name, path)
+        with open(batch_script, "w", encoding="utf-8") as script_file:
+            script_file.write("#!/bin/bash\n\n")
+            script_file.write(f"#PBS -o {output}\n")
+            script_file.write(f"#PBS -e {error}\n")
+            script_file.write(f"#PBS -N {name}\n")
+            script_file.write("#PBS -V \n")
+
+            # add additional sbatch options
+            for opt in self.format_batch_args():
+                script_file.write(f"#PBS {opt}\n")
+
+            for cmd in self.preamble:
+                script_file.write(f"{cmd}\n")
+
+            for i, step_cmd in enumerate(self.step_cmds):
+                script_file.write("\n")
+                script_file.write(f"{' '.join((step_cmd))} &\n")
+                if i == len(self.step_cmds) - 1:
+                    script_file.write("\n")
+                    script_file.write("wait\n")
+        with open(batch_script, "r") as f:
+            batch_script_read = f.read()
+        print(batch_script_read)
+        return batch_script, batch_script_read
+
+    def get_step_file(
+        self,
+        name,
+        path,
+        ending: str = ".sh",
+        script_name: t.Optional[str] = None,
+    ) -> str:
+        """Get the name for a file/script created by the step class
+
+        Used for Batch scripts, mpmd scripts, etc.
+        """
+        if script_name:
+            script_name = script_name if "." in script_name else script_name + ending
+            return osp.join(path, script_name)
+        return osp.join(path, name + ending)
+
+    def get_output_files(self, name, path) -> t.Tuple[str, str]:
+        """Return two paths to error and output files based on cwd"""
+        output = self.get_step_file(name, path, ending=".out")
+        error = self.get_step_file(name, path, ending=".err")
+        return output, error
 
     def set_nodes(self, num_nodes: int) -> None:
         """Set the number of nodes for this batch job

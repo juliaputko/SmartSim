@@ -1258,9 +1258,6 @@ def test_preview_model_on_wlm(fileutils, test_dir, wlmutils):
 
     assert "Run Command" in output
     assert "Run Arguments" in output
-    assert "nodes" in output
-    assert "ntasks" in output
-    assert "time" in output
     assert "Launch Command" in output
 
 

@@ -47,7 +47,11 @@
 
       Launch command:
 {%- for orc in db.entities %}
+        {%- if orc.run_settings.get_launch_cmd | is_list %}
         {{ orc.run_settings.get_launch_cmd | launch_cmd_formatter | wordwrap(150) | replace('\n', '\n         ') }}
+        {%- else %}
+        {{ orc.run_settings.get_launch_cmd }}
+        {%- endif %}
 {%- endfor %}
 
         {%- endif %}
