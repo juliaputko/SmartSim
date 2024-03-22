@@ -84,6 +84,20 @@ def is_list(_eval_ctx: u.F, value: str) -> bool:
     return isinstance(value, list)
 
 
+@pass_eval_context
+def launch_cmd_formatter(_eval_ctx: u.F, value: str) -> str:
+
+    a_string = ""
+    for item in value:
+        if type(item) is list:
+            value = " ".join(map(str, item))
+            a_string += f" {value}\n\n"
+        else:
+            value = "".join(map(str, item))
+            a_string += f" {value}"
+    return a_string
+
+
 def render(
     exp: "Experiment",
     manifest: t.Optional[Manifest] = None,
@@ -112,6 +126,7 @@ def render(
     env.filters["get_ifname"] = get_ifname
     env.filters["get_dbtype"] = get_dbtype
     env.filters["is_list"] = is_list
+    env.filters["launch_cmd_formatter"] = launch_cmd_formatter
     env.globals["Verbosity"] = Verbosity
 
     version = f"_{output_format}"
@@ -181,7 +196,9 @@ def _check_verbosity_level(
     """
     if not isinstance(verbosity_level, Verbosity):
 
-        logger.warning(f"'{verbosity_level}' is an unsupported verbosity level.\
- Setting verbosity to: {Verbosity.INFO}")
+        logger.warning(
+            f"'{verbosity_level}' is an unsupported verbosity level.\
+ Setting verbosity to: {Verbosity.INFO}"
+        )
         return Verbosity.INFO
     return verbosity_level

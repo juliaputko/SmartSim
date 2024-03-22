@@ -28,3 +28,27 @@
           {{ key }}: {{ value }}
         {%- endfor %}
         {%- endif %}
+
+      {%- if db.batch == True %}
+      {%- if verbosity_level == Verbosity.DEVELOPER %}
+
+      Launch Command:
+      {%- set launch, script = db.batch_settings.get_batch_launch_cmd %}
+      {%- for i in launch %}
+        {{ i|indent(8)|trim }}
+      {%- endfor %}
+
+        {{ script|indent(8)|safe }}
+
+      {%- endif %}
+
+      {%- else %}
+      {%- if verbosity_level == Verbosity.DEVELOPER %}
+
+      Launch command:
+{%- for orc in db.entities %}
+        {{ orc.run_settings.get_launch_cmd | launch_cmd_formatter | wordwrap(150) | replace('\n', '\n         ') }}
+{%- endfor %}
+
+        {%- endif %}
+      {%- endif %}

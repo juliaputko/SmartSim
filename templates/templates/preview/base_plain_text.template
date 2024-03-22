@@ -39,6 +39,18 @@
         {%- include "preview/clientconfig_plain_text.template" %}
         {%- endif %}
         {%- endif %}
+      {%- if verbosity_level == Verbosity.DEVELOPER %}
+      {%- if model.run_settings.launch_cmd %}
+
+      Launch Command:
+        {{ model.run_settings.get_launch_cmd | launch_cmd_formatter |wordwrap(150)| safe | replace('\n', '\n         ')}}
+      {%- endif %}
+      {%- if model.batch_settings %}
+
+      Launch Command:
+        {{ model.batch_settings.get_batch_launch_cmd | launch_cmd_formatter | wordwrap(200) | safe | replace('\n', '\n         ') }}
+      {%- endif %}
+      {%- endif %}
       {%- endfor %}
       {%- endif %}
 

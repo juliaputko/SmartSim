@@ -141,7 +141,8 @@ def proxyable_launch_cmd(
         proxy_module = "smartsim._core.entrypoints.indirect"
         etype = self.meta["entity_type"]
         status_dir = self.meta["status_dir"]
-        encoded_cmd = encode_cmd(original_cmd_list)
+        # encoded_cmd = encode_cmd(original_cmd_list) #JPNOTE commented for now
+        encoded_cmd = original_cmd_list
 
         # NOTE: this is NOT safe. should either 1) sign cmd and verify OR 2)
         #       serialize step and let the indirect entrypoint rebuild the

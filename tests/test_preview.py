@@ -26,6 +26,7 @@
 
 import pathlib
 import sys
+from copy import deepcopy
 from os import path as osp
 
 import numpy as np
@@ -34,9 +35,10 @@ from jinja2 import Template
 from jinja2.filters import FILTERS
 
 import smartsim._core._cli.utils as _utils
-from smartsim import Experiment
+from smartsim import Experiment, status
 from smartsim._core import Manifest, previewrenderer
 from smartsim._core.config import CONFIG
+from smartsim._core.utils.helpers import is_valid_cmd
 from smartsim.database import Orchestrator
 from smartsim.error.errors import PreviewFormatError
 from smartsim.settings import QsubBatchSettings, RunSettings
@@ -855,9 +857,10 @@ def test_preview_colocated_db_model_ensemble(fileutils, test_dir, wlmutils, mlut
     exp.generate(colo_ensemble)
 
     preview_manifest = Manifest(colo_ensemble)
+    exp.create_launch_command(preview_manifest)
 
     # Execute preview method
-    output = previewrenderer.render(exp, preview_manifest, verbosity_level="debug")
+    output = previewrenderer.render(exp, preview_manifest, verbosity_level="developer")
 
     # Evaluate output
     assert "Models" in output
@@ -968,9 +971,10 @@ def test_preview_colocated_db_script_ensemble(fileutils, test_dir, wlmutils, mlu
     exp.generate(colo_ensemble)
 
     preview_manifest = Manifest(colo_ensemble)
+    exp.create_launch_command(preview_manifest)
 
     # Execute preview method
-    output = previewrenderer.render(exp, preview_manifest, verbosity_level="debug")
+    output = previewrenderer.render(exp, preview_manifest, verbosity_level="developer")
 
     # Evaluate output
     assert "Torch Scripts" in output
@@ -1217,9 +1221,10 @@ def test_preview_wlm_run_commands_cluster_orc_model(
     )
 
     preview_manifest = Manifest(orc, smartsim_model)
+    exp.create_launch_command(preview_manifest)
 
     # Execute preview method
-    output = previewrenderer.render(exp, preview_manifest, verbosity_level="debug")
+    output = previewrenderer.render(exp, preview_manifest, verbosity_level="developer")
 
     # Evaluate output
     assert "Run Command" in output
@@ -1246,15 +1251,17 @@ def test_preview_model_on_wlm(fileutils, test_dir, wlmutils):
     M2 = exp.create_model("m2", path=test_dir, run_settings=settings2)
 
     preview_manifest = Manifest(M1, M2)
+    exp.create_launch_command(preview_manifest)
 
     # Execute preview method
-    output = previewrenderer.render(exp, preview_manifest, verbosity_level="debug")
+    output = previewrenderer.render(exp, preview_manifest, verbosity_level="developer")
 
     assert "Run Command" in output
     assert "Run Arguments" in output
     assert "nodes" in output
     assert "ntasks" in output
     assert "time" in output
+    assert "Launch Command" in output
 
 
 @pytest.mark.skipif(
@@ -1279,15 +1286,17 @@ def test_preview_batch_model(fileutils, test_dir, wlmutils):
     model.set_path(test_dir)
 
     preview_manifest = Manifest(model)
+    exp.create_launch_command(preview_manifest)
 
     # Execute preview method
-    output = previewrenderer.render(exp, preview_manifest, verbosity_level="debug")
+    output = previewrenderer.render(exp, preview_manifest, verbosity_level="developer")
 
     assert "Batch Launch: True" in output
     assert "Batch Command" in output
     assert "Batch Arguments" in output
     assert "nodes" in output
     assert "time" in output
+    assert "Launch Command" in output
 
 
 @pytest.mark.skipif(
@@ -1315,9 +1324,10 @@ def test_preview_batch_ensemble(fileutils, test_dir, wlmutils):
     ensemble.set_path(test_dir)
 
     preview_manifest = Manifest(ensemble)
+    exp.create_launch_command(preview_manifest)
 
     # Execute preview method
-    output = previewrenderer.render(exp, preview_manifest, verbosity_level="debug")
+    output = previewrenderer.render(exp, preview_manifest, verbosity_level="developer")
 
     assert "Batch Launch: True" in output
     assert "Batch Command" in output
@@ -1389,9 +1399,10 @@ def test_preview_launch_command(test_dir, wlmutils, choose_host):
     )
 
     preview_manifest = Manifest(orc, spam_eggs_model, hello_world_model, ensemble)
+    exp.create_launch_command(preview_manifest)
 
     # Execute preview method
-    output = previewrenderer.render(exp, preview_manifest, verbosity_level="debug")
+    output = previewrenderer.render(exp, preview_manifest, verbosity_level="developer")
 
     assert "orchestrator" in output
     assert "echo-spam" in output
@@ -1442,10 +1453,11 @@ def test_preview_batch_launch_command(fileutils, test_dir, wlmutils):
     orc.set_batch_arg("account", "ACCOUNT")
 
     preview_manifest = Manifest(orc, model)
-    # Execute preview method
-    output = previewrenderer.render(exp, preview_manifest, verbosity_level="debug")
+    exp.create_launch_command(preview_manifest)
 
-    # Evaluate output
+    # Execute preview method
+    output = previewrenderer.render(exp, preview_manifest, verbosity_level="developer")
+
     assert "Batch Launch: True" in output
     assert "Batch Command" in output
     assert "Batch Arguments" in output
@@ -1488,15 +1500,86 @@ def test_ensemble_batch(test_dir, wlmutils):
     exp.generate(ml_model, overwrite=True)
 
     preview_manifest = Manifest(db, ml_model, ensemble)
+    exp.create_launch_command(preview_manifest)
 
     # Call preview renderer for testing output
-    output = previewrenderer.render(exp, preview_manifest, verbosity_level="debug")
+    output = previewrenderer.render(exp, preview_manifest, verbosity_level="developer")
 
     # Evaluate output
     assert "Client Configuration" in output
     assert "Database Identifier" in output
     assert "Database Backend" in output
     assert "Type" in output
+
+
+@pytest.mark.skipif(
+    pytest.test_launcher not in pytest.wlm_options,
+    reason="Not testing WLM integrations",
+)
+def test_preview_mpmd(fileutils, test_dir, wlmutils):
+    """Preview MPMD model twice."""
+    exp_name = "test-mpmd"
+    launcher = wlmutils.get_test_launcher()
+    mpmd_supported = ["slurm", "pbs"]
+    if launcher not in mpmd_supported:
+        pytest.skip("Test requires Slurm, or PBS to run")
+
+    by_launcher = {
+        "slurm": ["srun", "mpirun"],
+        "pbs": ["mpirun"],
+    }
+
+    exp = Experiment(exp_name, launcher=launcher, exp_path=test_dir)
+
+    def prune_commands(launcher):
+        available_commands = []
+        if launcher in by_launcher:
+            for cmd in by_launcher[launcher]:
+                if is_valid_cmd(cmd):
+                    available_commands.append(cmd)
+        return available_commands
+
+    run_commands = prune_commands(launcher)
+    if len(run_commands) == 0:
+        pytest.skip(
+            f"MPMD on {launcher} only supported for run commands {by_launcher[launcher]}"
+        )
+
+    for run_command in run_commands:
+        script = fileutils.get_test_conf_path("sleep.py")
+        settings = exp.create_run_settings(
+            "python", f"{script} --time=5", run_command=run_command
+        )
+        settings.set_tasks(1)
+
+        settings.make_mpmd(deepcopy(settings))
+        settings.make_mpmd(deepcopy(settings))
+
+        mpmd_model = exp.create_model("mmpd", path=test_dir, run_settings=settings)
+        exp.preview(mpmd_model, verbosity_level="developer")
+
+
+@pytest.mark.parametrize(
+    "single_cmd",
+    [
+        pytest.param(True, id="Single MPMD `srun`"),
+        pytest.param(False, id="Multiple `srun`s"),
+    ],
+)
+def test_preview_sharded_orc(single_cmd, test_dir, wlmutils):
+    """Test preview MPMD and multiple srun Orchestrator."""
+    launcher = wlmutils.get_test_launcher()
+    exp = Experiment("test-mpmd", launcher=launcher, exp_path=test_dir)
+    num_shards = 5
+    orc = Orchestrator(
+        port=12345,
+        launcher="slurm",
+        run_command="srun",
+        db_nodes=num_shards,
+        batch=False,
+        single_cmd=single_cmd,
+    )
+    exp.preview(orc, verbosity_level="developer")
 
 
 def test_preview_colocated_db_singular_model(wlmutils, test_dir):
@@ -1518,9 +1601,10 @@ def test_preview_colocated_db_singular_model(wlmutils, test_dir):
     exp.generate(model_1, model_2, overwrite=True)
 
     preview_manifest = Manifest(model_1, model_2)
+    exp.create_launch_command(preview_manifest)
 
     # Call preview renderer for testing output
-    output = previewrenderer.render(exp, preview_manifest, verbosity_level="debug")
+    output = previewrenderer.render(exp, preview_manifest, verbosity_level="developer")
 
     assert "model_1" in output
     assert "model_2" in output

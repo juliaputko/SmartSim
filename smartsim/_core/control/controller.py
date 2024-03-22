@@ -593,6 +593,13 @@ class Controller:
         )
         batch_step.meta["entity_type"] = str(type(entity_list).__name__).lower()
         batch_step.meta["status_dir"] = str(telemetry_dir / entity_list.name)
+        # JPNOTE: keep this here or move?
+        entity_list.batch_settings.meta["entity_type"] = str(
+            type(entity_list).__name__
+        ).lower()
+        entity_list.batch_settings.meta["status_dir"] = str(
+            telemetry_dir / entity_list.name
+        )
 
         substeps = []
         for entity in entity_list.entities:
@@ -625,6 +632,10 @@ class Controller:
         step.meta["entity_type"] = str(type(entity).__name__).lower()
         step.meta["status_dir"] = str(telemetry_dir / entity.name)
 
+
+        # JPNOTE: keep this here or move?
+        entity.run_settings.meta["entity_type"] = str(type(entity).__name__).lower()
+        entity.run_settings.meta["status_dir"] = str(telemetry_dir / entity.name)
         return step
 
     def _prep_entity_client_env(self, entity: Model) -> None:

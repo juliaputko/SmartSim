@@ -25,15 +25,86 @@
 from __future__ import annotations
 
 import copy
+import functools
+import os
+import os.path as osp
+import pathlib
+import shutil
+import sys
+import time
 import typing as t
+from os import makedirs
 
-from smartsim.settings.containers import Container
+from smartsim._core.utils.helpers import create_lockfile_name
+from smartsim.error import SSInternalError
+from smartsim.settings.containers import Container, Singularity
 
-from .._core.utils.helpers import expand_exe_path, fmt_dict, is_valid_cmd
+from .._core.config import CONFIG
+from .._core.utils.helpers import (
+    expand_exe_path,
+    fmt_dict,
+    get_base_36_repr,
+    is_valid_cmd,
+)
 from ..entity.dbobject import DBModel, DBScript
+from ..error.errors import UnproxyableStepError
 from ..log import get_logger
 
+_RunSettingsT = t.TypeVar("_RunSettingsT", bound="RunSettings")
 logger = get_logger(__name__)
+
+
+def proxyable_launch_cmd_jp(
+    fn: t.Callable[[_RunSettingsT], t.List[str]],
+) -> t.Callable[[_RunSettingsT], t.List[str]]:
+    @functools.wraps(fn)
+    def _get_launch_cmd_jp(self: _RunSettingsT, name, path) -> t.List[str]:
+
+        name = self._create_unique_name(name)
+
+        # local launch for now:
+        managed = False
+        original_cmd_list = fn(self, name, path)
+
+        if not CONFIG.telemetry_enabled:
+            return original_cmd_list
+
+        # managed --> wlm that takes care
+        # unmanaged --> we are executed them as prcoesses (local launcher)
+        # ... need to change where managed is being passed ...
+        if managed:
+            raise UnproxyableStepError(
+                f"Attempting to proxy managed step of type {type(self)}"
+                "through the unmanaged step proxy entry point"
+            )
+
+        proxy_module = "smartsim._core.entrypoints.indirect"
+        etype = self.meta["entity_type"]
+        status_dir = self.meta["status_dir"]
+        #  encoded_cmd = encode_cmd(original_cmd_list)
+        encoded_cmd = original_cmd_list  # not encoding for now
+
+        # NOTE: this is NOT safe. should either 1) sign cmd and verify OR 2)
+        #       serialize step and let the indirect entrypoint rebuild the
+        #       cmd... for now, test away...
+        return [
+            sys.executable,
+            "-m",
+            proxy_module,
+            "+name",
+            name,
+            "+command",
+            encoded_cmd,
+            "+entity_type",
+            etype,
+            "+telemetry_dir",
+            status_dir,
+            "+working_dir",
+            path,
+        ]
+
+    return _get_launch_cmd_jp
+
 
 # fmt: off
 class SettingsBase:
@@ -53,6 +124,8 @@ class RunSettings(SettingsBase):
         run_args: t.Optional[t.Dict[str, t.Union[int, str, float, None]]] = None,
         env_vars: t.Optional[t.Dict[str, t.Optional[str]]] = None,
         container: t.Optional[Container] = None,
+        meta: t.Dict[str, str] = None,
+        launch_cmd: t.Optional[str] = None,
         **_kwargs: t.Any,
     ) -> None:
         """Run parameters for a ``Model``
@@ -114,6 +187,343 @@ class RunSettings(SettingsBase):
                 ],
             ]
         ] = None
+
+        self.meta = meta or {}
+        self.launch_cmd = launch_cmd
+
+    @property
+    def get_launch_cmd(self):
+        return self.launch_cmd
+
+    def _create_job_step_rs(self, entity, telemetry_dir: t.Optional[t.Any] = None):
+        """Create job steps on the run settings
+
+        :param entity: an entity to create a step for
+        :type entity: SmartSimEntity
+        :param telemetry_dir: Path to a directory in which the job step
+                               may write telemetry events
+        :type telemetry_dir: pathlib.Path
+        :return: the job step
+        :rtype: Step
+        """
+        # if isinstance(entity, Model):
+        #    self._prep_entity_client_env(entity)
+
+        # step = self._launcher.create_step(entity.name, entity.path, entity.run_settings)
+
+        self.meta["entity_type"] = str(type(entity).__name__).lower()
+        self.meta["status_dir"] = str(telemetry_dir / entity.name)
+        step = self.get_launch_cmd_jp(entity.name, entity.path)
+
+        return step
+
+    @proxyable_launch_cmd_jp
+    def get_launch_cmd_jp(self, name, path) -> t.List[str]:
+        cmd = []
+
+        # Add run command and args if user specified
+        # default is no run command for local job steps
+        if self.run_command:
+            cmd.append(self.run_command)
+            run_args = self.format_run_args()
+            cmd.extend(run_args)
+
+        if self.colocated_db_settings:
+            # Replace the command with the entrypoint wrapper script
+            if not (bash := shutil.which("bash")):
+                raise RuntimeError("Unable to locate bash interpreter")
+
+            launch_script_path = self.get_colocated_launch_script(name, path)
+            cmd.extend([bash, launch_script_path])
+
+        container = self.container
+        if container and isinstance(container, Singularity):
+            # pylint: disable-next=protected-access
+            cmd += container._container_cmds(self.cwd)
+
+        # build executable
+        cmd.extend(self.exe)
+
+        if self.exe_args:
+            cmd.extend(self.exe_args)
+
+        self.launch_cmd = cmd
+        return cmd
+
+    def get_colocated_launch_script(self, entity_name, path) -> str:
+        # prep step for colocated launch if specifed in run settings
+        script_path = self.get_step_file(
+            entity_name,
+            path,
+            script_name=osp.join(".smartsim", f"colocated_launcher_{entity_name}.sh"),
+        )
+        makedirs(osp.dirname(script_path), exist_ok=True)
+
+        db_settings = {}
+        # jpnote look at this
+        # if isinstance(self.step_settings, RunSettings):
+        #     db_settings = self.step_settings.colocated_db_settings or {}
+
+        if isinstance(self, RunSettings):
+            db_settings = self.colocated_db_settings or {}
+
+        # db log file causes write contention and kills performance so by
+        # default we turn off logging unless user specified debug=True
+        if db_settings.get("debug", False):
+            db_log_file = self.get_step_file(entity_name, path, ending="-db.log")
+        else:
+            db_log_file = "/dev/null"
+
+        # write the colocated wrapper shell script to the directory for this
+        # entity currently being prepped to launch
+        self.write_colocated_launch_script(script_path, db_log_file, db_settings)
+        return script_path
+
+    def _build_db_model_cmd(self, db_models: t.List[DBModel]) -> t.List[str]:
+        cmd = []
+        for db_model in db_models:
+            cmd.append("+db_model")
+            cmd.append(f"--name={db_model.name}")
+
+            # Here db_model.file is guaranteed to exist
+            # because we don't allow the user to pass a serialized DBModel
+            cmd.append(f"--file={db_model.file}")
+
+            cmd.append(f"--backend={db_model.backend}")
+            cmd.append(f"--device={db_model.device}")
+            cmd.append(f"--devices_per_node={db_model.devices_per_node}")
+            cmd.append(f"--first_device={db_model.first_device}")
+            if db_model.batch_size:
+                cmd.append(f"--batch_size={db_model.batch_size}")
+            if db_model.min_batch_size:
+                cmd.append(f"--min_batch_size={db_model.min_batch_size}")
+            if db_model.min_batch_timeout:
+                cmd.append(f"--min_batch_timeout={db_model.min_batch_timeout}")
+            if db_model.tag:
+                cmd.append(f"--tag={db_model.tag}")
+            if db_model.inputs:
+                cmd.append("--inputs=" + ",".join(db_model.inputs))
+            if db_model.outputs:
+                cmd.append("--outputs=" + ",".join(db_model.outputs))
+
+        return cmd
+
+    def _build_db_script_cmd(self, db_scripts: t.List[DBScript]) -> t.List[str]:
+        cmd = []
+        for db_script in db_scripts:
+            cmd.append("+db_script")
+            cmd.append(f"--name={db_script.name}")
+            if db_script.func:
+                # Notice that here db_script.func is guaranteed to be a str
+                # because we don't allow the user to pass a serialized function
+                sanitized_func = db_script.func.replace("\n", "\\n")
+                if not (
+                    sanitized_func.startswith("'")
+                    and sanitized_func.endswith("'")
+                    or (sanitized_func.startswith('"') and sanitized_func.endswith('"'))
+                ):
+                    sanitized_func = '"' + sanitized_func + '"'
+                cmd.append(f"--func={sanitized_func}")
+            elif db_script.file:
+                cmd.append(f"--file={db_script.file}")
+            cmd.append(f"--device={db_script.device}")
+            cmd.append(f"--devices_per_node={db_script.devices_per_node}")
+            cmd.append(f"--first_device={db_script.first_device}")
+        return cmd
+
+    def _build_colocated_wrapper_cmd(
+        self,
+        db_log: str,
+        cpus: int = 1,
+        rai_args: t.Optional[t.Dict[str, str]] = None,
+        extra_db_args: t.Optional[t.Dict[str, str]] = None,
+        port: int = 6780,
+        ifname: t.Optional[t.Union[str, t.List[str]]] = None,
+        custom_pinning: t.Optional[str] = None,
+        **kwargs: t.Any,
+    ) -> str:
+        """Build the command use to run a colocated DB application
+
+        :param db_log: log file for the db
+        :type db_log: str
+        :param cpus: db cpus, defaults to 1
+        :type cpus: int, optional
+        :param rai_args: redisai args, defaults to None
+        :type rai_args: dict[str, str], optional
+        :param extra_db_args: extra redis args, defaults to None
+        :type extra_db_args: dict[str, str], optional
+        :param port: port to bind DB to
+        :type port: int
+        :param ifname: network interface(s) to bind DB to
+        :type ifname: str | list[str], optional
+        :param db_cpu_list: The list of CPUs that the database should be limited to
+        :type db_cpu_list: str, optional
+        :return: the command to run
+        :rtype: str
+        """
+        # pylint: disable=too-many-locals
+
+        # create unique lockfile name to avoid symlink vulnerability
+        # this is the lockfile all the processes in the distributed
+        # application will try to acquire. since we use a local tmp
+        # directory on the compute node, only one process can acquire
+        # the lock on the file.
+        lockfile = create_lockfile_name()
+
+        # create the command that will be used to launch the
+        # database with the python entrypoint for starting
+        # up the backgrounded db process
+
+        cmd = [
+            sys.executable,
+            "-m",
+            "smartsim._core.entrypoints.colocated",
+            "+lockfile",
+            lockfile,
+            "+db_cpus",
+            str(cpus),
+        ]
+        # Add in the interface if using TCP/IP
+        if ifname:
+            if isinstance(ifname, str):
+                ifname = [ifname]
+            cmd.extend(["+ifname", ",".join(ifname)])
+        cmd.append("+command")
+        # collect DB binaries and libraries from the config
+
+        db_cmd = []
+        if custom_pinning:
+            db_cmd.extend(["taskset", "-c", custom_pinning])
+        db_cmd.extend(
+            [CONFIG.database_exe, CONFIG.database_conf, "--loadmodule", CONFIG.redisai]
+        )
+
+        # add extra redisAI configurations
+        for arg, value in (rai_args or {}).items():
+            if value:
+                # RAI wants arguments for inference in all caps
+                # ex. THREADS_PER_QUEUE=1
+                db_cmd.append(f"{arg.upper()} {str(value)}")
+
+        db_cmd.extend(["--port", str(port)])
+
+        # Add socket and permissions for UDS
+        unix_socket = kwargs.get("unix_socket", None)
+        socket_permissions = kwargs.get("socket_permissions", None)
+
+        if unix_socket and socket_permissions:
+            db_cmd.extend(
+                [
+                    "--unixsocket",
+                    str(unix_socket),
+                    "--unixsocketperm",
+                    str(socket_permissions),
+                ]
+            )
+        elif bool(unix_socket) ^ bool(socket_permissions):
+            raise SSInternalError(
+                "`unix_socket` and `socket_permissions` must both be defined or undefined."
+            )
+
+        db_cmd.extend(
+            ["--logfile", db_log]
+        )  # usually /dev/null, unless debug was specified
+        if extra_db_args:
+            for db_arg, value in extra_db_args.items():
+                # replace "_" with "-" in the db_arg because we use kwargs
+                # for the extra configurations and Python doesn't allow a hyphen
+                # in a variable name. All redis and KeyDB configuration options
+                # use hyphens in their names.
+                db_arg = db_arg.replace("_", "-")
+                db_cmd.extend([f"--{db_arg}", value])
+
+        db_models = kwargs.get("db_models", None)
+        if db_models:
+            db_model_cmd = self._build_db_model_cmd(db_models)
+            db_cmd.extend(db_model_cmd)
+
+        db_scripts = kwargs.get("db_scripts", None)
+        if db_scripts:
+            db_script_cmd = self._build_db_script_cmd(db_scripts)
+            db_cmd.extend(db_script_cmd)
+
+        # run colocated db in the background
+        db_cmd.append("&")
+
+        cmd.extend(db_cmd)
+        return " ".join(cmd)
+
+    def write_colocated_launch_script(
+        self, file_name: str, db_log: str, colocated_settings: t.Dict[str, t.Any]
+    ) -> None:
+        """Write the colocated launch script
+
+        This file will be written into the cwd of the step that
+        is created for this entity.
+
+        :param file_name: name of the script to write
+        :type file_name: str
+        :param db_log: log file for the db
+        :type db_log: str
+        :param colocated_settings: db settings from entity run_settings
+        :type colocated_settings: dict[str, Any]
+        """
+
+        colocated_cmd = self._build_colocated_wrapper_cmd(db_log, **colocated_settings)
+
+        with open(file_name, "w", encoding="utf-8") as script_file:
+            script_file.write("#!/bin/bash\n")
+            script_file.write("set -e\n\n")
+
+            script_file.write("Cleanup () {\n")
+            script_file.write("if ps -p $DBPID > /dev/null; then\n")
+            script_file.write("\tkill -15 $DBPID\n")
+            script_file.write("fi\n}\n\n")
+
+            # run cleanup after all exitcodes
+            script_file.write("trap Cleanup exit\n\n")
+
+            # force entrypoint to write some debug information to the
+            # STDOUT of the job
+            if colocated_settings["debug"]:
+                script_file.write("export SMARTSIM_LOG_LEVEL=debug\n")
+
+            script_file.write(f"{colocated_cmd}\n")
+            script_file.write("DBPID=$!\n\n")
+
+            # Write the actual launch command for the app
+            script_file.write("$@\n\n")
+
+    ## get the output and err files ??
+
+    def get_output_files(self, name, path) -> t.Tuple[str, str]:
+        """Return two paths to error and output files based on cwd"""
+        output = self.get_step_file(name, path, ending=".out")
+        error = self.get_step_file(name, path, ending=".err")
+        return output, error
+
+    def get_step_file(
+        self,
+        name,
+        path,
+        ending: str = ".sh",
+        script_name: t.Optional[str] = None,
+    ) -> str:
+        """Get the name for a file/script created by the step class
+
+        Used for Batch scripts, mpmd scripts, etc.
+        """
+        if script_name:
+            script_name = script_name if "." in script_name else script_name + ending
+            return osp.join(path, script_name)
+        return osp.join(path, name + ending)
+
+    def _set_env(self) -> t.Dict[str, str]:
+        env = os.environ.copy()
+        if self.env_vars:
+            for k, v in self.env_vars.items():
+                env[k] = v or ""
+        return env
 
     @property
     def exe_args(self) -> t.Union[str, t.List[str]]:
@@ -587,12 +997,18 @@ class RunSettings(SettingsBase):
             string += "\nCo-located Database: True"
         return string
 
+    @staticmethod
+    def _create_unique_name(entity_name: str) -> str:
+        step_name = entity_name + "-" + get_base_36_repr(time.time_ns())
+        return step_name
+
 
 class BatchSettings(SettingsBase):
     def __init__(
         self,
         batch_cmd: str,
         batch_args: t.Optional[t.Dict[str, t.Optional[str]]] = None,
+        meta: t.Dict[str, str] = (None,),
         **kwargs: t.Any,
     ) -> None:
         self._batch_cmd = batch_cmd
@@ -602,6 +1018,10 @@ class BatchSettings(SettingsBase):
         self.set_walltime(kwargs.get("time", None))
         self.set_queue(kwargs.get("queue", None))
         self.set_account(kwargs.get("account", None))
+
+        self.meta = meta or {}
+
+    # JPNOTE: do I need to add anything to here, or just in the slurm/pbs settings?
 
     @property
     def batch_cmd(self) -> str:
@@ -626,6 +1046,135 @@ class BatchSettings(SettingsBase):
     @batch_args.setter
     def batch_args(self, value: t.Dict[str, t.Optional[str]]) -> None:
         self._batch_args = copy.deepcopy(value) if value else {}
+
+    def get_batch_launch_cmd(self): ...
+
+    def _create_batch_job_step_rs(
+        self, entity_list, telemetry_dir: t.Optional[t.Any] = None
+    ):
+        NotImplementedError
+
+        ## i think I just need everything for creating the launch command..
+        ## becuase instead of that stuff being in the
+
+        # dont actually want to move all of that outside the controller
+
+        # ## will not go into here at all
+        # ## will go directly into slurm settings
+        # ## function has the same name but is called by
+        # ## batch_settings.name
+        # ## where to I save it, can I have a getter fnct
+
+        # print("DOES IT EVER come into here? ")  # doesn't actually fall into here?
+        # # goes straight to slurm.. hmmmm
+        # if not entity_list.batch_settings:
+        #     raise ValueError(
+        #         "EntityList must have batch settings to be launched as batch"
+        #     )
+
+        # telemetry_dir = telemetry_dir / entity_list.name
+        # # batch_step = self._launcher.create_step(
+        # #     entity_list.name, entity_list.path, entity_list.batch_settings
+        # # )
+        # # dont create the step?
+        # ## what is this going into???
+        # self.meta["entity_type"] = str(type(entity_list).__name__).lower()
+        # self.meta["status_dir"] = str(telemetry_dir / entity_list.name)
+
+        # substeps = []
+        # for entity in entity_list.entities:
+        #     # tells step creation not to look for an allocation
+        #     entity.run_settings.in_batch = True
+        #     step = self._create_job_step_rs(entity, telemetry_dir)
+        #     substeps.append(step)
+        #     batch_step.add_to_batch(step)
+        # return batch_step, substeps
+
+        # self.meta["entity_type"] = str(type(entity).__name__).lower()
+        # self.meta["status_dir"] = str(telemetry_dir / entity.name)
+
+        # print("where is it getting the script?")
+
+    # # create_step(..pass in batch settings )
+    # # add to batch stuff
+
+    # # change to batch cmd ...
+    # #  @proxyable_launch_cmd_jp
+    # def launch_cmd_batch(self) -> t.List[str]:
+    #     cmd = []
+
+    #     # Add run command and args if user specified
+    #     # default is no run command for local job steps
+    #     if self._batch_cmd:
+    #         cmd.append(self._batch_cmd)
+    #         run_args = self.format_batch_args()
+    #         cmd.extend(run_args)
+
+    #     # if self.colocated_db_settings:
+    #     #     # Replace the command with the entrypoint wrapper script
+    #     #     if not (bash := shutil.which("bash")):
+    #     #         raise RuntimeError("Unable to locate bash interpreter")
+
+    #     #     launch_script_path = self.get_colocated_launch_script()
+    #     #     cmd.extend([bash, launch_script_path])
+
+    #     # container = self.container
+    #     # if container and isinstance(container, Singularity):
+    #     #     # pylint: disable-next=protected-access
+    #     #     cmd += container._container_cmds(self.cwd)
+
+    #     # build executable
+    #     cmd.extend(self.exe)
+    #     if self.exe_args:
+    #         cmd.extend(self.exe_args)
+    #     return cmd
+
+    #####
+    # launcher.py
+    #     every launcher utilizing this interface must have a map
+    #  of supported RunSettings types (see slurmLauncher.py for ex)
+    #    def create_step(
+
+    ### do I need to know this stuff to create the launch cmd?  ###
+    #         # RunSettings types supported by this launcher
+
+    # @property
+    # def supported_rs(self) -> t.Dict[t.Type[SettingsBase], t.Type[Step]]:
+    #     # RunSettings types supported by this launcher
+    #     return {
+    #         SrunSettings: SrunStep,
+    #         SbatchSettings: SbatchStep,
+    #         MpirunSettings: MpirunStep,
+    #         MpiexecSettings: MpiexecStep,
+    #         OrterunSettings: OrterunStep,
+    #         RunSettings: LocalStep,
+    #     }
+
+    # def get_step_file(
+    #     self,
+    #     name,
+    #     path,
+    #     ending: str = ".sh",
+    #     script_name: t.Optional[str] = None,
+    # ) -> str:
+    #     """Get the name for a file/script created by the step class
+
+    #     Used for Batch scripts, mpmd scripts, etc.
+    #     """
+    #     print(path)
+    #     print(name)
+    #     if script_name:
+    #         script_name = script_name if "." in script_name else script_name + ending
+    #         return osp.join(path, script_name)
+    #     return osp.join(path, name + ending)
+
+    #     ## get the output and err files ??
+
+    # def get_output_files(self, name, path) -> t.Tuple[str, str]:
+    #     """Return two paths to error and output files based on cwd"""
+    #     output = self.get_step_file(name, path, ending=".out")
+    #     error = self.get_step_file(name, path, ending=".err")
+    #     return output, error
 
     def set_nodes(self, num_nodes: int) -> None:
         raise NotImplementedError
