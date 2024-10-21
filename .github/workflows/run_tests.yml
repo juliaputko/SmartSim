@@ -117,7 +117,6 @@ jobs:
         if: matrix.subset == 'dragon'
         env:
           SMARTSIM_DRAGON_TOKEN: ${{ secrets.DRAGON_TOKEN }}
-          LD_LIBRARY_PATH: $PWD/smartsim/_core/.dragon/dragon-0.9/lib/:$LD_LIBRARY_PATH
           
         run: |
           if [ -n "${SMARTSIM_DRAGON_TOKEN}" ]; then
@@ -128,6 +127,7 @@ jobs:
           SP=$(python -c 'import site; print(site.getsitepackages()[0])')/smartsim/_core/config/dragon/.env
           LLP=$(cat $SP | grep LD_LIBRARY_PATH | awk '{split($0, array, "="); print array[2]}')
           echo "LD_LIBRARY_PATH=$LLP:$LD_LIBRARY_PATH" >> $GITHUB_ENV
+          export LD_LIBRARY_PATH=$PWD/smartsim/_core/.dragon/dragon-0.9/lib/:$LD_LIBRARY_PATH
 
       - name: Run mypy
         run: |
