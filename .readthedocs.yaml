@@ -30,6 +30,7 @@ build:
       - cd smartdashboard; python -m pip install .
       - smart build --device cpu --dragon -v
       - export $(cat ./_core/config/dragon/.env | grep DRAGON_INCLUDE_DIR
+      - export LD_LIBRARY_PATH=$DRAGON_INCLUDE_DIR:$LD_LIBRARY_PATH
     pre_build:
       - pip install typing_extensions==4.8.0
       - pip install pydantic==1.10.13
