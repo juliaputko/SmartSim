@@ -28,7 +28,8 @@ build:
       - cd smartredis/doc; doxygen Doxyfile_c; doxygen Doxyfile_cpp; doxygen Doxyfile_fortran
       - ln -s smartredis/examples ./examples
       - cd smartdashboard; python -m pip install .
-      - smart build --device cpu -v --dragon
+      - smart build --device cpu --dragon -v
+      - export $(cat ./_core/config/dragon/.env | grep DRAGON_INCLUDE_DIR
     pre_build:
       - pip install typing_extensions==4.8.0
       - pip install pydantic==1.10.13
