@@ -29,7 +29,6 @@ from __future__ import annotations
 import abc
 import typing as t
 
-from smartsim.launchable.job_group import JobGroup
 
 if t.TYPE_CHECKING:
     from smartsim.launchable.job import Job
@@ -136,5 +135,3 @@ class CompoundEntity(abc.ABC):
 
     @abc.abstractmethod
     def build_jobs(self, settings: LaunchSettings) -> t.Collection[Job]: ...
-    def as_job_group(self, settings: LaunchSettings) -> JobGroup:
-        return JobGroup(list(self.build_jobs(settings)))
