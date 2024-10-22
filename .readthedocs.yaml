@@ -37,6 +37,7 @@ build:
       - pwd
       - find /home/docs/checkouts/readthedocs.org/user_builds/smartsim/envs/755/lib/python3.10/site-packages/smartsim/_core/.dragon -name ".env"
       - which smart
+      - smart site
       
     pre_build:
       - pip install typing_extensions==4.8.0
