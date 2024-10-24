@@ -19,7 +19,7 @@ build:
         then
           exit 183;
         fi
-      - sudo touch /usr/lib/foo
+      - touch /usr/lib/foo
       - ls /usr/lib/foo
     pre_create_environment:
       - git clone --depth 1 https://github.com/CrayLabs/SmartRedis.git smartredis
@@ -31,7 +31,7 @@ build:
       - ln -s smartredis/examples ./examples
       - cd smartdashboard; python -m pip install .
       - smart build --device cpu --dragon -v
-      - sudo cp ./smartsim/_core/.dragon/dragon-0.9/lib/libdragon.so /usr/lib/
+      - cp ./smartsim/_core/.dragon/dragon-0.9/lib/libdragon.so /usr/lib/
   
 
       # - export $(cat /home/docs/checkouts/readthedocs.org/user_builds/smartsim/envs/755/lib/python3.10/site-packages/smartsim/_core/.dragon/.env | grep DRAGON_INCLUDE_DIR)
