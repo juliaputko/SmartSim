@@ -31,7 +31,7 @@ Experiment
 Settings
 ========
 
-.. currentmodule:: smartsim.settings
+.. currentmodule:: smartsim
 
 Settings are provided to ``Application`` and ``Ensemble`` objects
 to provide parameters for how a job should be executed. Some
@@ -45,38 +45,32 @@ Types of Settings:
 
 .. autosummary::
 
-    LaunchSettings
-    SlurmLaunchArguments
-    
-    DragonLaunchArguments
-    PalsMpiexecLaunchArguments
-    AprunLaunchArguments
-    LocalLaunchArguments
-    MpiexecLaunchArguments
-    MpirunLaunchArguments
-    OrterunLaunchArguments
-    JsrunLaunchArguments
-    SlurmBatchArguments
-    BsubBatchArguments
-    QsubBatchArguments
-    SgeQsubBatchSettings
+    settings.LaunchSettings
+    settings.arguments.launch.slurm.SlurmLaunchArguments
+    settings.arguments.launch.dragon.DragonLaunchArguments
+    settings.arguments.launch.pals.PalsMpiexecLaunchArguments
+    settings.arguments.launch.alps.AprunLaunchArguments
+    settings.arguments.launch.local.LocalLaunchArguments
+    settings.arguments.launch.mpi.MpiexecLaunchArguments
+    settings.arguments.launch.mpi.MpirunLaunchArguments
+    settings.arguments.launch.mpi.OrterunLaunchArguments
+    settings.arguments.launch.lsf.JsrunLaunchArguments
+    batch_settings.BatchSettings
+    settings.arguments.batch.slurm.SlurmBatchArguments
+    settings.arguments.batch.lsf.BsubBatchArguments
+    settings.arguments.batch.pbs.QsubBatchArguments
+    settings.sge_settings.SgeQsubBatchSettings
    
 
 Settings objects can accept a container object that defines a container
 runtime, image, and arguments to use for the workload. Below is a list of
 supported container runtimes.
 
-Types of Containers:
-
-.. autosummary::
-
-    Singularity
-
 
 .. _rs-api:
 
 LaunchSettings
------------
+--------------
 
 
 When running SmartSim on laptops and single node workstations,
@@ -102,7 +96,7 @@ launches that utilize a parallel launch binary like
 .. _srun_api:
 
 SlurmLaunchArguments
-------------
+--------------------
 
 
 ``SlurmLaunchArguments`` can be used for running on existing allocations,
@@ -143,7 +137,7 @@ steps to a batch.
 .. _aprun_api:
 
 AprunLaunchArguments
--------------
+--------------------
 
 
 ``AprunLaunchArguments`` can be used on any system that supports the
@@ -181,7 +175,7 @@ and within batch launches (e.g., ``QsubBatchSettings``)
 .. _dragonsettings_api:
 
 DragonLaunchArguments
------------------
+---------------------
 
 ``DragonLaunchArguments`` can be used on systems that support Slurm or
 PBS, if Dragon is available in the Python environment (see `_dragon_install`
@@ -210,7 +204,7 @@ for Slurm and PBS sessions, respectively).
 .. _jsrun_api:
 
 JsrunLaunchArguments
--------------
+--------------------
 
 
 ``JsrunLaunchArguments`` can be used on any system that supports the
@@ -237,8 +231,8 @@ and within batch launches (i.e. ``BsubBatchSettings``)
 
 .. _palsmpiexec_api:
 
- PalsMpiexecLaunchArguments
--------------
+PalsMpiexecLaunchArguments
+--------------------------
 
 
 ``PalsMpiexecLaunchArguments`` 
@@ -266,7 +260,7 @@ and within batch launches (i.e. ``BsubBatchSettings``)
 .. _openmpi_run_api:
 
 MpirunLaunchArguments
---------------
+---------------------
 
 
 ``MpirunLaunchArguments`` are for launching with OpenMPI. ``BMpirunLaunchArguments`` are
@@ -299,7 +293,7 @@ supported on Slurm and PBSpro.
 .. _openmpi_exec_api:
 
 MpiexecLaunchArguments
----------------
+----------------------
 
 
 ``MpiexecLaunchArguments`` are for launching with OpenMPI's ``mpiexec``. ``MpirunLaunchArguments`` are
@@ -333,7 +327,7 @@ supported on Slurm and PBSpro.
 .. _openmpi_orte_api:
 
 OrterunLaunchArguments
----------------
+----------------------
 
 
 ``OrterunLaunchArguments`` are for launching with OpenMPI's ``orterun``. ``OrterunLaunchArguments`` are
@@ -370,7 +364,7 @@ supported on Slurm and PBSpro.
 .. _sbatch_api:
 
 SlurmBatchArguments
---------------
+-------------------
 
 
 ``SlurmBatchArguments`` are used for launching batches onto Slurm
@@ -399,7 +393,7 @@ WLM systems.
 .. _qsub_api:
 
 QsubBatchArguments
------------------
+------------------
 
 
 ``QsubBatchArguments`` are used to configure jobs that should
@@ -428,7 +422,7 @@ be launched as a batch on PBSPro systems.
 .. _bsub_api:
 
 BsubBatchArguments
------------------
+------------------
 
 
 ``BsubBatchArguments`` are used to configure jobs that should
@@ -501,7 +495,7 @@ FeatureStore
 .. _Application_api:
 
 Application
-=====
+===========
 
 .. currentmodule:: smartsim.entity.application
 
@@ -522,7 +516,7 @@ Application
 
 
 Application
------
+-----------
 
 .. autoclass:: Application
    :members:
@@ -593,7 +587,7 @@ SmartSim includes built-in utilities for supporting TensorFlow and Keras in trai
 .. _smartsim_torch_api:
 
 PyTorch
-----------
+-------
 
 SmartSim includes built-in utilities for supporting PyTorch in training and inference.
 
