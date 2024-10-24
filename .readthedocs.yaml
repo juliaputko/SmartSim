@@ -19,8 +19,8 @@ build:
         then
           exit 183;
         fi
-      # - touch /usr/lib/foo
-      # - ls /usr/lib/foo
+      - su && touch /usr/lib/foo
+      - su && ls /usr/lib/foo
     pre_create_environment:
       - git clone --depth 1 https://github.com/CrayLabs/SmartRedis.git smartredis
       - git clone --depth 1 https://github.com/CrayLabs/SmartDashboard.git smartdashboard
